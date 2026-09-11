@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+
+.env
+
+data/captures/*
+!data/captures/.gitkeep
+data/sightings.db
+
+tests_manual/_tmp/
