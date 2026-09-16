@@ -7,8 +7,8 @@ precisar esperar o hardware de campo (ESP32-CAM) chegar.
 ## Arquitetura
 
 ```
-webcam/ESP32-CAM -> detecção de movimento -> identificação de espécie -> log (SQLite) -> notificação
-   capture.py           motion.py               identify.py            storage.py         notify.py
+webcam/ESP32-CAM -> detecção de ser vivo (YOLO) -> identificação de espécie -> log (SQLite) -> notificação
+   capture.py           detector.py                  identify.py            storage.py         notify.py
 ```
 
 Cada peça é trocável independente das outras (por isso as classes abstratas em
@@ -38,9 +38,17 @@ terminal + salva no banco (`data/sightings.db`) e a foto (`data/captures/`).
 
 1. Crie uma conta em [inaturalist.org](https://www.inaturalist.org) (gratuita).
 2. Gere um token em https://www.inaturalist.org/users/api_token (válido por
-   ~24h — pra rodar isso continuamente por semanas, depois automatizamos a
-   renovação via OAuth, mas pra testar já serve).
+   ~24h).
 3. No `.env`: `IDENTIFY_BACKEND=inaturalist` e `INATURALIST_TOKEN=<seu token>`.
+
+O token expira a cada ~24h. Criar uma OAuth Application no iNaturalist pra
+automatizar a renovação exige ser "App Owner" aprovado, o que só é liberado
+depois de ~2 meses de conta — então em vez disso, a renovação é manual via
+Telegram: quando o token expira, o app manda um aviso no grupo, você gera um
+token novo (mesmo link do passo 2) e responde no grupo com
+`/token SEU_TOKEN_AQUI`. O app salva esse valor em
+`data/inaturalist_token.txt` e volta a identificar — sem precisar editar o
+`.env` nem reiniciar nada. Precisa do Telegram configurado (próxima seção).
 
 ## Ligando a notificação de verdade (Telegram)
 
@@ -73,7 +81,8 @@ se depois de usar vocês preferirem mesmo WhatsApp, a gente troca só essa peça
   aprendizado é baixa (o ESP32-CAM é programado pela mesma IDE).
 - O Arduino que você já tem pode ficar responsável só por um sensor de
   movimento físico (PIR) se quiser complementar a detecção por software — mas
-  não é obrigatório, `motion.py` já resolve isso via diferença de frames.
+  não é obrigatório, `detector.py` já resolve isso detectando o bicho direto
+  na imagem (via YOLO).
 
 ## Próximos passos (Fase 3 em diante)
 

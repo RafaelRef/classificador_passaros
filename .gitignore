@@ -7,5 +7,9 @@ __pycache__/
 data/captures/*
 !data/captures/.gitkeep
 data/sightings.db
+data/inaturalist_token.txt
 
 tests_manual/_tmp/
+
+# peso do modelo YOLO, baixado automaticamente na primeira execução
+*.pt

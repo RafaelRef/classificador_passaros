@@ -6,7 +6,7 @@ sem precisar do hardware final.
 
 Fase 2 (quando o ESP32-CAM/Raspberry Pi chegar): troca-se só esta classe por uma
 que busca o frame via HTTP do ESP32-CAM (ele serve uma imagem JPEG numa URL tipo
-http://<ip-da-camera>/capture). O resto do pipeline (motion, identify, notify,
+http://<ip-da-camera>/capture). O resto do pipeline (detector, identify, notify,
 storage) não muda nada.
 """
 

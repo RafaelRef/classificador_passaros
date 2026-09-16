@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import abc
 import dataclasses
+from typing import Callable
 
 import numpy as np
 
@@ -50,27 +51,36 @@ class MockIdentifier(Identifier):
         )
 
 
+class InaturalistTokenExpired(Exception):
+    """Levantado quando o token salvo não é mais aceito pela API (HTTP 401)."""
+
+
 class InaturalistIdentifier(Identifier):
     """
     Usa a Computer Vision API do iNaturalist (score_image).
 
-    Requer um token de acesso pessoal (veja .env.example para como gerar).
+    Requer um token de acesso pessoal (veja .env.example para como gerar). O
+    token dura só ~24h, então em vez de um valor fixo recebemos um
+    "token_provider": uma função que devolve o token mais atual (veja
+    TokenStore em token_store.py, atualizado via Telegram em
+    telegram_token_listener.py).
+
     Docs da API: https://api.inaturalist.org/v1/docs/
     """
 
     API_URL = "https://api.inaturalist.org/v1/computervision/score_image"
 
-    def __init__(self, token: str, min_confidence: float = 0.15):
-        if not token:
-            raise ValueError(
-                "InaturalistIdentifier precisa de um token (INATURALIST_TOKEN no .env)."
-            )
-        self.token = token
+    def __init__(self, token_provider: Callable[[], str], min_confidence: float = 0.15):
+        self.token_provider = token_provider
         self.min_confidence = min_confidence
 
     def identify(self, frame: np.ndarray) -> Identification | None:
         import cv2
         import requests
+
+        token = self.token_provider()
+        if not token:
+            raise InaturalistTokenExpired("Nenhum token do iNaturalist configurado ainda.")
 
         ok, buf = cv2.imencode(".jpg", frame)
         if not ok:
@@ -78,11 +88,13 @@ class InaturalistIdentifier(Identifier):
 
         resp = requests.post(
             self.API_URL,
-            headers={"Authorization": f"Bearer {self.token}"},
+            headers={"Authorization": f"Bearer {token}"},
             files={"image": ("frame.jpg", buf.tobytes(), "image/jpeg")},
             data={"locale": "pt-BR"},  # nome comum sempre em português (Brasil)
             timeout=15,
         )
+        if resp.status_code == 401:
+            raise InaturalistTokenExpired("Token do iNaturalist expirado ou inválido.")
         resp.raise_for_status()
         data = resp.json()
 
@@ -106,10 +118,14 @@ class InaturalistIdentifier(Identifier):
         )
 
 
-def build_identifier(backend: str, inaturalist_token: str | None = None) -> Identifier:
+def build_identifier(
+    backend: str, inaturalist_token_provider: Callable[[], str] | None = None
+) -> Identifier:
     """Fábrica simples usada pelo main.py a partir da variável IDENTIFY_BACKEND."""
     if backend == "mock":
         return MockIdentifier()
     if backend == "inaturalist":
-        return InaturalistIdentifier(token=inaturalist_token or "")
+        if inaturalist_token_provider is None:
+            raise ValueError("InaturalistIdentifier precisa de um inaturalist_token_provider.")
+        return InaturalistIdentifier(token_provider=inaturalist_token_provider)
     raise ValueError(f"Backend de identificação desconhecido: {backend!r}")
