@@ -165,6 +165,29 @@ virar um gráfico ilegível), ranking de espécies, e a lista de avistamentos
 recentes com miniatura da foto, confiança e horário. Tem filtro por data
 (atalhos de "Hoje"/"7 dias"/"30 dias"/"Tudo" ou um intervalo customizado).
 
+### Trabalhando só no dashboard (sem o resto do projeto)
+
+`data/sightings.db` e `data/captures/` são ignorados pelo Git de propósito
+(são os dados reais da família) — então um clone novo deste repositório chega
+sem nenhum avistamento, e o dashboard ficaria vazio. Pra desenvolver a parte
+visual sem precisar do hardware nem dos dados reais (ex: numa outra sessão
+do Claude Code, outra máquina, etc):
+
+```bash
+git clone https://github.com/RafaelRef/classificador_passaros.git
+cd classificador_passaros
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt   # ou só "pip install flask opencv-python numpy", mais rápido, se for mexer só no dashboard
+python -m scripts.seed_dashboard_data    # gera ~40 avistamentos + fotos fake em data/
+python -m src.dashboard
+```
+
+Só mexa em `src/dashboard.py` e `src/templates/dashboard.html` (e, se
+precisar de uma consulta nova ao banco, em `src/storage.py`) — esses três
+arquivos cobrem o dashboard inteiro. Commitar e dar push nesse repositório
+deixa as mudanças prontas pra puxar (`git pull`) em qualquer outra cópia do
+projeto, incluindo a que já está rodando com os dados reais.
+
 ## Próximos passos (Fase 3 em diante)
 
 - Dimensionar e testar a bateria + painel solar com o consumo real do

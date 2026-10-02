@@ -8,6 +8,7 @@ __pycache__/
 data/captures/*
 !data/captures/.gitkeep
 data/sightings.db
+data/sightings.db.bak-*
 data/inaturalist_token.txt
 
 tests_manual/_tmp/
