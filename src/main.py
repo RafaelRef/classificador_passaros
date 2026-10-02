@@ -22,7 +22,7 @@ import time
 import cv2
 from dotenv import load_dotenv
 
-from .capture import WebcamSource
+from .capture import build_source
 from .detector import AnimalDetector
 from .identify import Identifier
 from .identify import InaturalistTokenExpired
@@ -167,14 +167,16 @@ def _identify_worker(
 def main() -> None:
     load_dotenv(PROJECT_ROOT / ".env")
 
+    camera_source = os.getenv("CAMERA_SOURCE", "webcam")
     camera_index = int(os.getenv("CAMERA_INDEX", "0"))
+    esp32_cam_url = os.getenv("ESP32_CAM_URL")
     identify_backend = os.getenv("IDENTIFY_BACKEND", "mock")
     notify_backend = os.getenv("NOTIFY_BACKEND", "console")
     telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
     telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
     ignore_humans = os.getenv("IGNORE_HUMANS", "true").strip().lower() not in ("false", "0", "no")
 
-    source = WebcamSource(camera_index=camera_index)
+    source = build_source(camera_source, camera_index=camera_index, esp32_cam_url=esp32_cam_url)
     detector = AnimalDetector(ignore_humans=ignore_humans)
 
     token_store = TokenStore(INATURALIST_TOKEN_PATH, initial_token=os.getenv("INATURALIST_TOKEN", ""))

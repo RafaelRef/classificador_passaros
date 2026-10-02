@@ -58,7 +58,7 @@ class ESP32CamSource(FrameSource):
     tipo http://<ip>/capture que retorna um JPEG a cada chamada.
     """
 
-    def __init__(self, capture_url: str, timeout_s: float = 5.0):
+    def __init__(self, capture_url: str, timeout_s: float = 15.0):
         self.capture_url = capture_url
         self.timeout_s = timeout_s
 
@@ -72,3 +72,14 @@ class ESP32CamSource(FrameSource):
             return None
         arr = np.frombuffer(resp.content, dtype=np.uint8)
         return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+
+
+def build_source(source: str, camera_index: int = 0, esp32_cam_url: str | None = None) -> FrameSource:
+    """Fábrica simples usada pelo main.py a partir da variável CAMERA_SOURCE."""
+    if source == "webcam":
+        return WebcamSource(camera_index=camera_index)
+    if source == "esp32":
+        if not esp32_cam_url:
+            raise ValueError("CAMERA_SOURCE=esp32 exige ESP32_CAM_URL configurado no .env")
+        return ESP32CamSource(capture_url=esp32_cam_url)
+    raise ValueError(f"Fonte de câmera desconhecida: {source!r}")

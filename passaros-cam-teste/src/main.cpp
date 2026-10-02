@@ -1,6 +1,8 @@
 #include <Arduino.h>
+#include <WiFi.h>
+#include <WebServer.h>
 #include "esp_camera.h"
-#include "base64.h"
+#include "wifi_credentials.h"
 
 // ===== Mapeamento de pinos - ESP32-CAM AI-Thinker =====
 #define PWDN_GPIO_NUM     32
@@ -20,10 +22,38 @@
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
-void setup() {
-  Serial.begin(115200);
-  delay(1000);
+WebServer server(80);
 
+void handleCapture() {
+  uint32_t t0 = millis();
+  camera_fb_t *fb = esp_camera_fb_get();
+  uint32_t t1 = millis();
+  if (!fb) {
+    server.send(503, "text/plain", "Falha ao capturar frame");
+    return;
+  }
+  server.sendHeader("Connection", "close");
+  server.setContentLength(fb->len);
+  server.send(200, "image/jpeg", "");
+  WiFiClient client = server.client();
+  size_t written = client.write(fb->buf, fb->len);
+  client.stop();
+  uint32_t t2 = millis();
+  size_t fb_len = fb->len;
+  esp_camera_fb_return(fb);
+  Serial.printf(
+    "[capture] grab=%lums send=%lums bytes=%u/%u heap=%u rssi=%d\n",
+    (unsigned long)(t1 - t0), (unsigned long)(t2 - t1),
+    (unsigned)written, (unsigned)fb_len,
+    (unsigned)ESP.getFreeHeap(), WiFi.RSSI()
+  );
+}
+
+void handleRoot() {
+  server.send(200, "text/plain", "passaros-cam-teste ok. GET /capture para um JPEG.");
+}
+
+void setupCamera() {
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -65,25 +95,35 @@ void setup() {
     return;
   }
   Serial.println("Camera init OK!");
-  Serial.println(psramFound() ? "PSRAM encontrada!" : "PSRAM NAO encontrada!");
+}
 
-  delay(2000); // dá tempo da câmera ajustar exposição/branco
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
 
-  camera_fb_t *fb = esp_camera_fb_get();
-  if (!fb) {
-    Serial.println("Falha ao capturar frame!");
-    return;
+  setupCamera();
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.printf("Conectando no Wi-Fi \"%s\"", WIFI_SSID);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
   }
+  Serial.println();
+  Serial.print("Conectado! IP: ");
+  Serial.println(WiFi.localIP());
 
-  Serial.printf("Frame capturado! Tamanho: %u bytes\n", fb->len);
-  String encoded = base64::encode(fb->buf, fb->len);
-  Serial.println("----START JPEG BASE64----");
-  Serial.println(encoded);
-  Serial.println("----END JPEG BASE64----");
+  // Sem isso, o Wi-Fi entra em modo de economia de energia e cada captura
+  // HTTP fica progressivamente mais lenta até travar.
+  WiFi.setSleep(false);
 
-  esp_camera_fb_return(fb);
+  server.on("/", handleRoot);
+  server.on("/capture", handleCapture);
+  server.begin();
+  Serial.println("Servidor HTTP no ar. Capture em /capture");
 }
 
 void loop() {
-  // nada - captura só acontece uma vez no setup()
+  server.handleClient();
 }
