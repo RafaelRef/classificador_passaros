@@ -139,18 +139,21 @@ Fiação (direto nos pads do módulo ESP32-CAM, sem precisar de resistor):
 | GND | GND |
 | OUT | GPIO 13 |
 
-**Status atual: ainda não funcionando.** O sinal do PIR não está chegando no
-GPIO13 (testado com o endpoint de diagnóstico `GET /pir`, que mostra o estado
-bruto do pino — fica preso em `LOW` mesmo com movimento na frente do sensor,
-mesmo depois de reconectar os fios). Próximo passo é confirmar com multímetro
-se o GND do PIR está de fato no mesmo nó elétrico do GND do ESP32 (suspeita
-atual) — ver histórico de debug na conversa, ou retomar testando
-`http://<ip>/pir` depois de qualquer ajuste na fiação.
+**Status: validado e funcionando.** Com os fios soldados direto nos pads do
+módulo (em vez de jumpers soltos em protoboard, que tinham o GND mal
+compartilhado) e o potenciômetro de sensibilidade do PIR ajustado (estava
+sensível demais), o ciclo completo funciona: detecta movimento real, acorda do
+deep sleep sozinho e volta a dormir sozinho sem movimento. O endpoint
+`GET /pir` (estado bruto do pino) ficou no firmware como ferramenta de
+diagnóstico remoto, caso precise depurar de novo no futuro sem acesso físico à
+placa.
 
 ## Próximos passos (Fase 3 em diante)
 
-- Resolver a fiação do sensor PIR (ver seção acima) e validar o ciclo completo
-  de deep sleep com bateria/painel solar.
+- Dimensionar e testar a bateria + painel solar com o consumo real do
+  ESP32-CAM em deep sleep.
+- Proteção contra intempérie (case) pra deixar o conjunto na varanda.
+- Montagem definitiva no local de observação + teste prolongado.
 - Dashboard web lendo direto de `data/sightings.db`: linha do tempo de
   avistamentos, contagem de espécies diferentes, filtros por data.
 - Deploy do pipeline rodando continuamente perto da câmera (ou num servidor,
