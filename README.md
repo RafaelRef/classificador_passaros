@@ -1,8 +1,9 @@
-# Pássaros App — protótipo (Fase 1 e 2)
+# Pássaros App — protótipo (Fase 1, 2 e 3 em andamento)
 
 Protótipo do sistema de identificação automática de pássaros pra varanda da casa
-de praia. Pensado pra você testar agora mesmo com a webcam do seu computador, sem
-precisar esperar o hardware de campo (ESP32-CAM) chegar.
+de praia. Dá pra testar com a webcam do computador (Fase 1) ou com o ESP32-CAM de
+campo, que já está montado e funcionando (Fase 2 — veja a seção
+[Hardware de campo](#hardware-de-campo-esp32-cam) mais abaixo).
 
 ## Arquitetura
 
@@ -33,6 +34,16 @@ python -m src.main
 Isso já valida o pipeline inteiro: câmera liga, detecta quando algo se move na
 frente dela, "identifica" (modo mock, sem IA de verdade ainda) e imprime no
 terminal + salva no banco (`data/sightings.db`) e a foto (`data/captures/`).
+
+Pra usar o ESP32-CAM de campo em vez da webcam, no `.env`:
+
+```
+CAMERA_SOURCE=esp32
+ESP32_CAM_URL=http://<ip-da-camera>/capture
+```
+
+O IP aparece no Serial Monitor do firmware quando ele conecta no Wi-Fi (veja a
+seção [Hardware de campo](#hardware-de-campo-esp32-cam)).
 
 ## Ligando a identificação de verdade (iNaturalist)
 
@@ -70,22 +81,76 @@ exige verificação de conta Business e aprovação de templates; a via não-ofi
 do suporte oficial do WhatsApp. Recomendo validar tudo com Telegram primeiro, e
 se depois de usar vocês preferirem mesmo WhatsApp, a gente troca só essa peça.
 
-## Quando o hardware de campo chegar (ESP32-CAM)
+## Hardware de campo (ESP32-CAM)
 
-- `capture.py` já tem um esqueleto pronto (`ESP32CamSource`) pra puxar imagens de
-  um ESP32-CAM na rede local via HTTP — só apontar pra URL de captura do
-  firmware da câmera.
-- Como não tem tomada perto da estante (só Wi-Fi), o ESP32-CAM é a escolha mais
-  sensata: consome muito menos energia que um Raspberry Pi, então uma bateria +
-  painel solar pequeno dá conta. E como você já mexe com Arduino IDE, a curva de
-  aprendizado é baixa (o ESP32-CAM é programado pela mesma IDE).
-- O Arduino que você já tem pode ficar responsável só por um sensor de
-  movimento físico (PIR) se quiser complementar a detecção por software — mas
-  não é obrigatório, `detector.py` já resolve isso detectando o bicho direto
-  na imagem (via YOLO).
+O ESP32-CAM já está montado e o firmware (pasta `passaros-cam-teste/`, projeto
+PlatformIO separado) está funcionando: ele conecta no Wi-Fi de casa e serve uma
+foto JPEG a cada chamada em `GET /capture` — é isso que o `ESP32CamSource` em
+`src/capture.py` consome.
+
+Por que ESP32-CAM e não um Raspberry Pi: não tem tomada perto da estante (só
+Wi-Fi), e o ESP32-CAM consome bem menos energia, então uma bateria + painel
+solar pequeno dá conta. Também é programado pela mesma Arduino IDE/PlatformIO
+que você já usa.
+
+### Gravando o firmware
+
+```bash
+cd passaros-cam-teste
+cp include/wifi_credentials.h.example include/wifi_credentials.h
+# edite include/wifi_credentials.h com o SSID/senha da sua rede
+# (esse arquivo é gitignored, nunca é commitado)
+
+pip install -U platformio   # se ainda não tiver o CLI
+pio run -t upload --upload-port /dev/cu.usbserial-XXX   # ajuste a porta
+```
+
+Depois de gravar, abra o Serial Monitor (115200 baud) pra pegar o IP que a
+câmera recebeu — é esse IP que vai no `ESP32_CAM_URL` do `.env` (ver seção
+acima).
+
+### Pegadinhas de hardware já resolvidas
+
+- **Sensor é um OV5640, não o OV2640 padrão.** Nos 20MHz de clock "de fábrica"
+  (pensados pro OV2640), o OV5640 esquenta e a imagem fica com um véu
+  arroxeado que piora com o tempo. Resolvido baixando `xclk_freq_hz` pra 6MHz
+  em `passaros-cam-teste/src/main.cpp` — como bônus, as capturas também
+  ficaram mais rápidas e consistentes.
+- **Conexões TCP mal fechadas travavam a câmera** depois de algumas capturas
+  seguidas. Resolvido fechando a conexão explicitamente
+  (`Connection: close` + `client.stop()`) e desligando o modo de economia de
+  energia do Wi-Fi (`WiFi.setSleep(false)`).
+- Mesmo com isso, a latência de cada `/capture` varia bastante (tipicamente
+  0.3–8s) — normal pra antena do AI-Thinker. O `ESP32CamSource` já tem
+  timeout de 15s e `main.py` já tolera e re-tenta uma captura que falhe.
+
+### Sensor PIR (deep sleep) — em andamento
+
+Pra economizar bateria de verdade (WiFi+câmera ligados o tempo todo custa
+muito mais energia que ficar em sono profundo entre detecções), o firmware já
+tem a lógica de deep sleep pronta: acorda quando o PIR (HC-SR501) detecta
+movimento, serve capturas por um tempo, e volta a dormir sozinho.
+
+Fiação (direto nos pads do módulo ESP32-CAM, sem precisar de resistor):
+
+| HC-SR501 | ESP32-CAM |
+|---|---|
+| VCC | 5V |
+| GND | GND |
+| OUT | GPIO 13 |
+
+**Status atual: ainda não funcionando.** O sinal do PIR não está chegando no
+GPIO13 (testado com o endpoint de diagnóstico `GET /pir`, que mostra o estado
+bruto do pino — fica preso em `LOW` mesmo com movimento na frente do sensor,
+mesmo depois de reconectar os fios). Próximo passo é confirmar com multímetro
+se o GND do PIR está de fato no mesmo nó elétrico do GND do ESP32 (suspeita
+atual) — ver histórico de debug na conversa, ou retomar testando
+`http://<ip>/pir` depois de qualquer ajuste na fiação.
 
 ## Próximos passos (Fase 3 em diante)
 
+- Resolver a fiação do sensor PIR (ver seção acima) e validar o ciclo completo
+  de deep sleep com bateria/painel solar.
 - Dashboard web lendo direto de `data/sightings.db`: linha do tempo de
   avistamentos, contagem de espécies diferentes, filtros por data.
 - Deploy do pipeline rodando continuamente perto da câmera (ou num servidor,

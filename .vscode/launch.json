@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "passaros-app (webcam)",
+            "name": "passaros-app",
             "type": "debugpy",
             "request": "launch",
             "module": "src.main",

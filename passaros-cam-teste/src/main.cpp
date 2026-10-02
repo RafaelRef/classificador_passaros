@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include "esp_camera.h"
+#include "driver/rtc_io.h"
 #include "wifi_credentials.h"
 
 // ===== Mapeamento de pinos - ESP32-CAM AI-Thinker =====
@@ -22,7 +23,30 @@
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
+// ===== Sensor PIR (HC-SR501) =====
+// GPIO13 é um dos poucos pinos livres no ESP32-CAM AI-Thinker (os outros vão
+// quase todos pra câmera) e também um dos pinos RTC capazes de acordar o chip
+// do deep sleep. A saída do HC-SR501 já é em lógica 3.3V (regulada internamente
+// pelo próprio módulo, mesmo alimentado em 5V), então liga direto sem
+// conversor de nível: VCC -> 5V, OUT -> GPIO13, GND -> GND.
+#define PIR_GPIO_NUM GPIO_NUM_13
+
+// Quanto tempo esperar sem WiFi antes de desistir e voltar a dormir (evita
+// ficar acordado (e gastando bateria) indefinidamente se o roteador cair).
+#define WIFI_CONNECT_TIMEOUT_MS 15000
+
+// Depois que o PIR volta a ficar baixo (bicho foi embora), continua
+// acordado por mais esse tempo — dá margem pro pipeline Python pegar mais
+// algumas capturas antes de dormir de novo.
+#define HANGOVER_MS 10000
+
+// Teto de segurança: dorme depois desse tempo acordado não importa o quê
+// (ex: PIR com defeito travado em HIGH). Evita esvaziar a bateria.
+#define MAX_AWAKE_MS 120000
+
 WebServer server(80);
+unsigned long lastMotionMs = 0;
+unsigned long bootMs = 0;
 
 void handleCapture() {
   uint32_t t0 = millis();
@@ -47,6 +71,10 @@ void handleCapture() {
     (unsigned)written, (unsigned)fb_len,
     (unsigned)ESP.getFreeHeap(), WiFi.RSSI()
   );
+}
+
+void handlePir() {
+  server.send(200, "text/plain", digitalRead(PIR_GPIO_NUM) == HIGH ? "HIGH" : "LOW");
 }
 
 void handleRoot() {
@@ -100,9 +128,52 @@ void setupCamera() {
   Serial.println("Camera init OK!");
 }
 
+void goToSleep() {
+  Serial.println("[sleep] indo dormir até o PIR detectar movimento de novo...");
+  Serial.flush();
+
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+  esp_camera_deinit();
+
+  // Se o PIR ainda estiver em HIGH (bicho parado bem na frente, ou hold time
+  // do módulo ainda não acabou), espera ele baixar — senão o chip acorda de
+  // novo instantaneamente ao entrar em deep sleep com ext0 armado em nível
+  // alto. Com teto de segurança pra não travar aqui pra sempre.
+  unsigned long waitStart = millis();
+  while (digitalRead(PIR_GPIO_NUM) == HIGH && (millis() - waitStart) < MAX_AWAKE_MS) {
+    delay(100);
+  }
+
+  rtc_gpio_pulldown_en(PIR_GPIO_NUM);
+  rtc_gpio_pullup_dis(PIR_GPIO_NUM);
+  esp_sleep_enable_ext0_wakeup(PIR_GPIO_NUM, 1); // acorda quando o PIR for HIGH
+  esp_deep_sleep_start();
+}
+
+void logWakeupReason() {
+  esp_sleep_wakeup_cause_t reason = esp_sleep_get_wakeup_cause();
+  switch (reason) {
+    case ESP_SLEEP_WAKEUP_EXT0:
+      Serial.println("[boot] acordei por causa do PIR (movimento detectado)");
+      break;
+    default:
+      Serial.println("[boot] boot normal (ligado na tomada/USB, não foi wake de deep sleep)");
+      break;
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   delay(1000);
+
+  // DIAGNÓSTICO: pulldown interno pra descobrir se o pino está flutuando
+  // (sem ligação de verdade) ou se algo está puxando ele pra HIGH de propósito.
+  pinMode(PIR_GPIO_NUM, INPUT_PULLDOWN);
+  logWakeupReason();
+
+  bootMs = millis();
+  lastMotionMs = bootMs;
 
   setupCamera();
 
@@ -110,6 +181,10 @@ void setup() {
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.printf("Conectando no Wi-Fi \"%s\"", WIFI_SSID);
   while (WiFi.status() != WL_CONNECTED) {
+    if (millis() - bootMs > WIFI_CONNECT_TIMEOUT_MS) {
+      Serial.println("\nWiFi não conectou a tempo, voltando a dormir pra economizar bateria.");
+      goToSleep();
+    }
     delay(500);
     Serial.print(".");
   }
@@ -123,10 +198,22 @@ void setup() {
 
   server.on("/", handleRoot);
   server.on("/capture", handleCapture);
+  server.on("/pir", handlePir);
   server.begin();
   Serial.println("Servidor HTTP no ar. Capture em /capture");
 }
 
 void loop() {
   server.handleClient();
+
+  if (digitalRead(PIR_GPIO_NUM) == HIGH) {
+    lastMotionMs = millis();
+  }
+
+  unsigned long now = millis();
+  bool semMovimentoHaTempoDemais = (now - lastMotionMs) > HANGOVER_MS;
+  bool acordadoHaTempoDemais = (now - bootMs) > MAX_AWAKE_MS;
+  if (semMovimentoHaTempoDemais || acordadoHaTempoDemais) {
+    goToSleep();
+  }
 }
