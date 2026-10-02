@@ -73,7 +73,10 @@ void setupCamera() {
   config.pin_sscb_scl = SIOC_GPIO_NUM;
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
-  config.xclk_freq_hz = 20000000;
+  // OV5640 é conhecido por esquentar e gerar um véu arroxeado que piora com
+  // o tempo quando rodado nos 20MHz "padrão" (pensados pro OV2640). Baixar o
+  // clock reduz o aquecimento e resolve isso, ao custo de menos fps.
+  config.xclk_freq_hz = 6000000;
   config.pixel_format = PIXFORMAT_JPEG;
 
   if (psramFound()) {
