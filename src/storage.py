@@ -78,5 +78,51 @@ class SightingsStore:
         )
         return cur.fetchall()
 
+    def sightings_in_range(self, start_iso: str, end_iso: str) -> list[dict]:
+        """Avistamentos entre duas datas (inclusivo), mais recentes primeiro. Usado pelo dashboard."""
+        self._conn.row_factory = sqlite3.Row
+        cur = self._conn.execute(
+            """
+            SELECT * FROM sightings
+            WHERE date(seen_at) >= date(?) AND date(seen_at) <= date(?)
+            ORDER BY seen_at DESC
+            """,
+            (start_iso, end_iso),
+        )
+        return [dict(row) for row in cur.fetchall()]
+
+    def counts_by_day(self, start_iso: str, end_iso: str) -> list[tuple[str, int]]:
+        """Quantidade de avistamentos por dia no período. Usado pelo dashboard."""
+        cur = self._conn.execute(
+            """
+            SELECT date(seen_at) AS day, COUNT(*) AS n
+            FROM sightings
+            WHERE date(seen_at) >= date(?) AND date(seen_at) <= date(?)
+            GROUP BY day
+            ORDER BY day ASC
+            """,
+            (start_iso, end_iso),
+        )
+        return [(row[0], row[1]) for row in cur.fetchall()]
+
+    def counts_by_species(self, start_iso: str, end_iso: str) -> list[tuple[str, int]]:
+        """Quantidade de avistamentos por espécie no período, do mais pro menos visto. Usado pelo dashboard."""
+        cur = self._conn.execute(
+            """
+            SELECT species_common_name, COUNT(*) AS n
+            FROM sightings
+            WHERE date(seen_at) >= date(?) AND date(seen_at) <= date(?)
+            GROUP BY species_common_name
+            ORDER BY n DESC
+            """,
+            (start_iso, end_iso),
+        )
+        return [(row[0], row[1]) for row in cur.fetchall()]
+
+    def earliest_sighting_date(self) -> str | None:
+        """Data (YYYY-MM-DD) do avistamento mais antigo, ou None se o banco estiver vazio. Usado pelo dashboard."""
+        cur = self._conn.execute("SELECT MIN(date(seen_at)) FROM sightings")
+        return cur.fetchone()[0]
+
     def close(self) -> None:
         self._conn.close()

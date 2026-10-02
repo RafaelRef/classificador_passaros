@@ -4,3 +4,4 @@ requests>=2.31
 python-dotenv>=1.0
 python-telegram-bot>=21.0
 ultralytics>=8.0
+flask>=3.0

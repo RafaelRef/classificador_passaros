@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pássaros App — avistamentos</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-1:      #fcfcfb;
+    --page-plane:     #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:       #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --series-1:       #2a78d6;
+    --series-1-wash:  rgba(42,120,214,0.10);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --page-plane:     #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --gridline:       #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --series-1:       #3987e5;
+      --series-1-wash:  rgba(57,135,229,0.14);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page-plane);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .page {
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 24px 16px 64px;
+  }
+  h1 {
+    font-size: 20px;
+    margin: 0 0 4px;
+  }
+  .subtitle {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin: 0 0 20px;
+  }
+
+  .card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+  }
+
+  /* ---- filtro ---- */
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  .filters form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .filters input[type="date"] {
+    font: inherit;
+    color: var(--text-primary);
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 10px;
+    min-width: 0;
+  }
+  @media (max-width: 480px) {
+    .filters, .filters form { flex-direction: column; align-items: stretch; }
+    .filters form { width: 100%; }
+    .filters input[type="date"] { width: 100%; }
+  }
+  .btn, .preset {
+    font: inherit;
+    font-size: 13px;
+    color: var(--text-primary);
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+  }
+  .btn:hover, .preset:hover {
+    background: var(--gridline);
+  }
+  .btn.primary {
+    background: var(--series-1);
+    border-color: var(--series-1);
+    color: #ffffff;
+  }
+
+  /* ---- stat tiles ---- */
+  .tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  @media (max-width: 480px) {
+    .tiles { grid-template-columns: 1fr; }
+  }
+  .tile .label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0 0 6px;
+  }
+  .tile .value {
+    font-size: 28px;
+    font-weight: 600;
+    font-variant-numeric: proportional-nums;
+  }
+
+  /* ---- charts ---- */
+  .charts {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  @media (max-width: 720px) {
+    .charts { grid-template-columns: 1fr; }
+  }
+  .card h2 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0 0 14px;
+  }
+
+  .daychart {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 160px;
+    border-bottom: 1px solid var(--baseline);
+    padding-top: 8px;
+    overflow-x: auto;
+  }
+  .daychart .col {
+    flex: 1 1 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    height: 100%;
+    min-width: 2px;
+  }
+  .daychart .bar {
+    width: 100%;
+    max-width: 24px;
+    min-height: 2px;
+    background: var(--series-1);
+    border-radius: 4px 4px 0 0;
+    cursor: default;
+  }
+  .daychart-labels {
+    display: flex;
+    gap: 2px;
+    margin-top: 6px;
+  }
+  .daychart-labels span {
+    flex: 1 1 0;
+    text-align: center;
+    font-size: 10px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: visible;
+  }
+
+  .speciesbars .row {
+    display: grid;
+    grid-template-columns: 120px 1fr 32px;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .speciesbars .name {
+    font-size: 13px;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .speciesbars .track {
+    background: var(--gridline);
+    border-radius: 4px;
+    height: 16px;
+    overflow: hidden;
+  }
+  .speciesbars .fill {
+    background: var(--series-1);
+    height: 100%;
+    border-radius: 4px;
+    min-width: 4px;
+  }
+  .speciesbars .count {
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+    text-align: right;
+  }
+
+  .empty {
+    color: var(--text-muted);
+    font-size: 13px;
+    padding: 12px 0;
+  }
+
+  /* ---- tabela ---- */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  thead th {
+    text-align: left;
+    color: var(--text-muted);
+    font-weight: 500;
+    font-size: 12px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--gridline);
+  }
+  tbody td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--gridline);
+    vertical-align: middle;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  .thumb {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    object-fit: cover;
+    display: block;
+    background: var(--gridline);
+  }
+  .species-common { font-weight: 500; }
+  .species-sci { color: var(--text-secondary); font-size: 12px; font-style: italic; }
+  .confidence, .when { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+  .source-badge {
+    display: inline-block;
+    font-size: 11px;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 1px 8px;
+  }
+
+  /* ---- tooltip ---- */
+  #tooltip {
+    position: fixed;
+    pointer-events: none;
+    background: var(--text-primary);
+    color: var(--surface-1);
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    opacity: 0;
+    transform: translate(-50%, -100%);
+    white-space: nowrap;
+    z-index: 10;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>🐦 Pássaros App — avistamentos</h1>
+  <p class="subtitle">Lendo direto de <code>data/sightings.db</code> — não precisa do pipeline rodando pra ver os dados já coletados.</p>
+
+  <div class="filters">
+    {% for preset in presets %}
+      <a class="preset" href="/?start={{ preset.start }}&end={{ preset.end }}">{{ preset.label }}</a>
+    {% endfor %}
+    <form method="get" action="/">
+      <input type="date" name="start" value="{{ start }}" max="{{ today }}">
+      <span style="color:var(--text-muted)">até</span>
+      <input type="date" name="end" value="{{ end }}" max="{{ today }}">
+      <button class="btn primary" type="submit">Aplicar</button>
+    </form>
+  </div>
+
+  <div class="tiles">
+    <div class="card tile">
+      <p class="label">Avistamentos no período</p>
+      <p class="value">{{ total }}</p>
+    </div>
+    <div class="card tile">
+      <p class="label">Espécies diferentes</p>
+      <p class="value">{{ species_count }}</p>
+    </div>
+    <div class="card tile">
+      <p class="label">Mais recente</p>
+      <p class="value" style="font-size:20px">{{ most_recent or "—" }}</p>
+    </div>
+  </div>
+
+  <div class="charts">
+    <div class="card">
+      <h2>Avistamentos por dia</h2>
+      {% if day_bars %}
+        <div class="daychart">
+          {% for d in day_bars %}
+            <div class="col">
+              <div class="bar" style="height: {{ d.pct }}%" data-label="{{ d.label }}" data-value="{{ d.n }}"></div>
+            </div>
+          {% endfor %}
+        </div>
+        <div class="daychart-labels">
+          {% for d in day_bars %}
+            <span>{{ d.label if loop.index0 % (1 if day_bars|length <= 6 else (day_bars|length // 6)) == 0 else "" }}</span>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="empty">Nenhum avistamento nesse período.</p>
+      {% endif %}
+    </div>
+
+    <div class="card speciesbars">
+      <h2>Por espécie</h2>
+      {% if species_bars %}
+        {% for s in species_bars %}
+          <div class="row">
+            <div class="name" title="{{ s.name }}">{{ s.name }}</div>
+            <div class="track"><div class="fill" style="width: {{ s.pct }}%" data-label="{{ s.name }}" data-value="{{ s.n }}"></div></div>
+            <div class="count">{{ s.n }}</div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <p class="empty">Nenhum avistamento nesse período.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Avistamentos recentes</h2>
+    {% if sightings %}
+      <table>
+        <thead>
+          <tr>
+            <th></th>
+            <th>Espécie</th>
+            <th>Confiança</th>
+            <th>Quando</th>
+            <th>Fonte</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in sightings %}
+            <tr>
+              <td><img class="thumb" src="/image/{{ s.image_filename }}" loading="lazy" alt=""></td>
+              <td>
+                <div class="species-common">{{ s.species_common_name }}</div>
+                {% if s.species_scientific_name %}<div class="species-sci">{{ s.species_scientific_name }}</div>{% endif %}
+              </td>
+              <td class="confidence">{{ (s.confidence * 100) | round | int }}%</td>
+              <td class="when">{{ s.seen_at[:16].replace("T", " ") }}</td>
+              <td><span class="source-badge">{{ s.source }}</span></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty">Nenhum avistamento nesse período.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div id="tooltip"></div>
+<script>
+  const tooltip = document.getElementById("tooltip");
+  document.querySelectorAll("[data-label]").forEach((el) => {
+    el.addEventListener("mousemove", (ev) => {
+      tooltip.textContent = `${el.dataset.label}: ${el.dataset.value}`;
+      tooltip.style.left = ev.clientX + "px";
+      tooltip.style.top = (ev.clientY - 10) + "px";
+      tooltip.style.opacity = "1";
+    });
+    el.addEventListener("mouseleave", () => {
+      tooltip.style.opacity = "0";
+    });
+  });
+</script>
+</body>
+</html>

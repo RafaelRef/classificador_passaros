@@ -148,13 +148,28 @@ deep sleep sozinho e volta a dormir sozinho sem movimento. O endpoint
 diagnóstico remoto, caso precise depurar de novo no futuro sem acesso físico à
 placa.
 
+## Dashboard web
+
+Página somente-leitura que lê direto de `data/sightings.db` — não precisa do
+pipeline (`src/main.py`) rodando ao mesmo tempo, só mostra o que já foi
+coletado até agora.
+
+```bash
+python -m src.dashboard
+```
+
+Abre em http://localhost:5050. Mostra avistamentos no período, espécies
+diferentes, avistamento mais recente, gráfico de avistamentos por dia
+(agrupa por semana/mês automaticamente se o período for muito longo, pra não
+virar um gráfico ilegível), ranking de espécies, e a lista de avistamentos
+recentes com miniatura da foto, confiança e horário. Tem filtro por data
+(atalhos de "Hoje"/"7 dias"/"30 dias"/"Tudo" ou um intervalo customizado).
+
 ## Próximos passos (Fase 3 em diante)
 
 - Dimensionar e testar a bateria + painel solar com o consumo real do
   ESP32-CAM em deep sleep.
 - Proteção contra intempérie (case) pra deixar o conjunto na varanda.
 - Montagem definitiva no local de observação + teste prolongado.
-- Dashboard web lendo direto de `data/sightings.db`: linha do tempo de
-  avistamentos, contagem de espécies diferentes, filtros por data.
 - Deploy do pipeline rodando continuamente perto da câmera (ou num servidor,
   puxando imagens do ESP32-CAM pela rede).
