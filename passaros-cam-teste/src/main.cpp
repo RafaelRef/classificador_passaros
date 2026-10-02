@@ -47,6 +47,7 @@
 WebServer server(80);
 unsigned long lastMotionMs = 0;
 unsigned long bootMs = 0;
+bool pirEstavaAlto = false;
 
 void handleCapture() {
   uint32_t t0 = millis();
@@ -132,6 +133,7 @@ void goToSleep() {
   Serial.println("[sleep] indo dormir até o PIR detectar movimento de novo...");
   Serial.flush();
 
+  Serial.println("[wifi] desconectando...");
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
   esp_camera_deinit();
@@ -167,8 +169,8 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  // DIAGNÓSTICO: pulldown interno pra descobrir se o pino está flutuando
-  // (sem ligação de verdade) ou se algo está puxando ele pra HIGH de propósito.
+  // Pulldown interno: evita leitura de HIGH por ruído caso o fio do PIR
+  // alguma hora se solte (pino flutuando cai pra LOW em vez de oscilar).
   pinMode(PIR_GPIO_NUM, INPUT_PULLDOWN);
   logWakeupReason();
 
@@ -206,9 +208,16 @@ void setup() {
 void loop() {
   server.handleClient();
 
-  if (digitalRead(PIR_GPIO_NUM) == HIGH) {
+  bool pirAlto = digitalRead(PIR_GPIO_NUM) == HIGH;
+  if (pirAlto) {
     lastMotionMs = millis();
+    if (!pirEstavaAlto) {
+      Serial.println("[pir] movimento detectado!");
+    }
+  } else if (pirEstavaAlto) {
+    Serial.println("[pir] movimento parou");
   }
+  pirEstavaAlto = pirAlto;
 
   unsigned long now = millis();
   bool semMovimentoHaTempoDemais = (now - lastMotionMs) > HANGOVER_MS;
