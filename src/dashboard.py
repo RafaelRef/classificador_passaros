@@ -15,12 +15,15 @@ from __future__ import annotations
 
 import functools
 import io
+import os
 import pathlib
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlencode
 
-from flask import Flask, abort, render_template, request, send_file
+from dotenv import load_dotenv
+from flask import Flask, abort, jsonify, render_template, request, send_file
 
+from .esp32cam import ESP32Cam
 from .storage import SightingsStore
 
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -30,6 +33,12 @@ DB_PATH = PROJECT_ROOT / "data" / "sightings.db"
 CAPTURES_DIR = (PROJECT_ROOT / "data" / "captures").resolve()
 
 app = Flask(__name__, template_folder=str(PROJECT_ROOT / "src" / "templates"))
+
+# A câmera é opcional: sem ESP32_CAM_URL no .env (quem roda só com a webcam, ou
+# num clone novo pra mexer no dashboard) o cartão da câmera simplesmente não
+# aparece, em vez de ficar piscando "sem resposta" pra sempre.
+load_dotenv(PROJECT_ROOT / ".env")
+camera = ESP32Cam(os.getenv("ESP32_CAM_URL"))
 
 # Intervalo padrão quando a pessoa ainda não escolheu um filtro de data.
 DEFAULT_RANGE_DAYS = 30
@@ -439,6 +448,10 @@ def index():
         "dashboard.html",
         inicio=inicio_iso,
         fim=fim_iso,
+        # Só se a câmera está configurada. O estado dela vem depois, por JS: ler
+        # o ESP aqui somaria o timeout (2s, quando ele está dormindo) ao
+        # carregamento de toda página.
+        tem_camera=camera.configurado,
         hoje=hoje.isoformat(),
         especie=especie,
         atalhos=atalhos,
@@ -579,6 +592,43 @@ def thumb(filename: str):
         max_age=CACHE_FOTOS,
         conditional=False,
     )
+
+
+# ---------------------------------------------------------------- a câmera
+# Três rotas finas em cima do ESP32Cam. Elas existem pro navegador nunca falar
+# direto com o ESP: ele aguenta uma conexão por vez, e o celular de cada pessoa
+# da casa com o dashboard aberto seria uma conexão a mais.
+
+
+@app.route("/camera/estado")
+def camera_estado():
+    return jsonify(camera.estado())
+
+
+@app.route("/camera/keepalive", methods=["POST"])
+def camera_keepalive():
+    """
+    Enquanto a janela ao vivo estiver aberta, o navegador chama isso de tempos
+    em tempos pra segurar o ESP acordado — sem isso ele dorme 10s depois do
+    bicho sair do quadro, bem no meio de alguém assistindo.
+    """
+    return jsonify(camera.keepalive())
+
+
+@app.route("/camera/frame")
+def camera_frame():
+    """
+    Um JPEG da câmera agora. 503 quando não deu: é o sinal pro JS da janela ao
+    vivo parar de insistir e mostrar que a câmera saiu do ar.
+    """
+    imagem = camera.frame()
+    if imagem is None:
+        abort(503)
+    resposta = app.response_class(imagem, mimetype="image/jpeg")
+    # Cada chamada é um frame novo de uma câmera ao vivo: cache aqui serviria
+    # só pra mostrar foto velha.
+    resposta.headers["Cache-Control"] = "no-store"
+    return resposta
 
 
 def main() -> None:

@@ -44,10 +44,128 @@
 // (ex: PIR com defeito travado em HIGH). Evita esvaziar a bateria.
 #define MAX_AWAKE_MS 120000
 
+// Quanto tempo um único /keepalive segura o ESP acordado. O dashboard pinga
+// enquanto a janela "ao vivo" estiver aberta; se o navegador for fechado, a
+// aba travar ou o Wi-Fi cair, os pings param e ele dorme sozinho depois desse
+// tempo. Tem que ser folgado em relação ao intervalo de ping do dashboard
+// (hoje 5s) pra um ping perdido não derrubar a sessão.
+#define LIVE_GRACE_MS 20000
+
+// Teto absoluto de uma sessão ao vivo, contado do primeiro keepalive. Sem
+// isso, uma aba esquecida aberta na cozinha segura o ESP acordado até a
+// bateria acabar — que é exatamente o que o deep sleep existe pra evitar.
+#define MAX_LIVE_MS 300000
+
 WebServer server(80);
 unsigned long lastMotionMs = 0;
 unsigned long bootMs = 0;
 bool pirEstavaAlto = false;
+
+// Sessão "ao vivo" pedida pelo dashboard. liveAteMs é renovado a cada
+// /keepalive; liveInicioMs guarda quando a sessão começou, pra aplicar o teto
+// do MAX_LIVE_MS. Os dois em zero significam "nenhuma sessão em curso".
+unsigned long liveAteMs = 0;
+unsigned long liveInicioMs = 0;
+
+// Uma vez que uma sessão ao vivo bate o MAX_LIVE_MS, nenhuma outra é aceita
+// até o ESP dormir e acordar de novo. Sem isso o teto seria inútil: a sessão
+// venceria, o ping seguinte abriria uma sessão nova do zero, e uma aba
+// esquecida aberta seguraria o ESP acordado pra sempre, em blocos de 5min.
+bool liveTetoAtingido = false;
+
+// Preenchido no boot por logWakeupReason(), exposto em /status pro dashboard
+// poder dizer "acordou com movimento" em vez de só "está acordado".
+const char *motivoBoot = "desconhecido";
+
+// Quanto falta de "limite" quando já se passou "decorrido". Em unsigned, a
+// subtração ao contrário daria um número gigante em vez de negativo, então o
+// caso de já ter estourado precisa ser tratado à mão.
+unsigned long restante(unsigned long decorrido, unsigned long limite) {
+  return decorrido >= limite ? 0UL : limite - decorrido;
+}
+
+bool sessaoAoVivoAtiva() {
+  if (liveAteMs == 0 || liveTetoAtingido) return false;
+  unsigned long agora = millis();
+  if (agora - liveInicioMs > MAX_LIVE_MS) {
+    liveTetoAtingido = true;  // trava até o próximo boot
+    return false;
+  }
+  // Comparação por diferença com sinal: segura contra o millis() dar a volta.
+  if ((long)(agora - liveAteMs) >= 0) return false;  // keepalive venceu
+  return true;
+}
+
+// Em quanto tempo o loop() vai mandar dormir, considerando todas as condições
+// que ele checa. É o mínimo entre elas, porque basta uma estourar.
+unsigned long dormeEmMs() {
+  unsigned long agora = millis();
+  unsigned long porMovimento = restante(agora - lastMotionMs, HANGOVER_MS);
+  unsigned long porTetoAcordado = restante(agora - bootMs, MAX_AWAKE_MS);
+  unsigned long menor = porMovimento < porTetoAcordado ? porMovimento : porTetoAcordado;
+
+  if (sessaoAoVivoAtiva()) {
+    // Durante a sessão ao vivo o loop ignora as duas condições acima, então o
+    // que vale é o que terminar primeiro: o keepalive vencer ou o teto da
+    // sessão estourar.
+    unsigned long porKeepalive = (long)(liveAteMs - agora) > 0 ? liveAteMs - agora : 0UL;
+    unsigned long porTetoLive = restante(agora - liveInicioMs, MAX_LIVE_MS);
+    menor = porKeepalive < porTetoLive ? porKeepalive : porTetoLive;
+  }
+  return menor;
+}
+
+void enviarStatus() {
+  unsigned long agora = millis();
+  bool aoVivo = sessaoAoVivoAtiva();
+
+  char json[384];
+  snprintf(json, sizeof(json),
+           "{\"acordado_ms\":%lu,\"sem_movimento_ms\":%lu,\"dorme_em_ms\":%lu,"
+           "\"pir\":\"%s\",\"ao_vivo\":%s,\"ao_vivo_restante_ms\":%lu,"
+           "\"hangover_ms\":%lu,\"max_awake_ms\":%lu,\"max_live_ms\":%lu,"
+           "\"motivo_boot\":\"%s\"}",
+           agora - bootMs,
+           agora - lastMotionMs,
+           dormeEmMs(),
+           digitalRead(PIR_GPIO_NUM) == HIGH ? "HIGH" : "LOW",
+           aoVivo ? "true" : "false",
+           aoVivo ? restante(agora - liveInicioMs, MAX_LIVE_MS) : 0UL,
+           (unsigned long)HANGOVER_MS,
+           (unsigned long)MAX_AWAKE_MS,
+           (unsigned long)MAX_LIVE_MS,
+           motivoBoot);
+
+  server.sendHeader("Connection", "close");
+  server.send(200, "application/json", json);
+}
+
+void handleStatus() {
+  enviarStatus();
+}
+
+// Segura o ESP acordado enquanto o dashboard estiver com a janela ao vivo
+// aberta. Responde o mesmo JSON do /status pra quem pingou já receber a
+// contagem regressiva atualizada, sem precisar de uma segunda requisição.
+void handleKeepalive() {
+  if (liveTetoAtingido) {
+    // 409: o pedido faz sentido, mas não vai ser atendido neste ciclo. O
+    // dashboard usa isso pra fechar a janela ao vivo dizendo por quê, em vez
+    // de ficar pingando à toa.
+    server.sendHeader("Connection", "close");
+    server.send(409, "application/json",
+                "{\"erro\":\"teto da sessao ao vivo atingido\",\"ao_vivo\":false}");
+    return;
+  }
+
+  unsigned long agora = millis();
+  if (!sessaoAoVivoAtiva()) {
+    liveInicioMs = agora;  // sessão nova (ou a anterior já tinha vencido)
+  }
+  liveAteMs = agora + LIVE_GRACE_MS;
+  if (liveAteMs == 0) liveAteMs = 1;  // 0 é o sentinela de "sem sessão"
+  enviarStatus();
+}
 
 void handleCapture() {
   uint32_t t0 = millis();
@@ -130,6 +248,9 @@ void setupCamera() {
 }
 
 void goToSleep() {
+  liveAteMs = 0;
+  liveInicioMs = 0;
+  liveTetoAtingido = false;
   Serial.println("[sleep] indo dormir até o PIR detectar movimento de novo...");
   Serial.flush();
 
@@ -157,9 +278,11 @@ void logWakeupReason() {
   esp_sleep_wakeup_cause_t reason = esp_sleep_get_wakeup_cause();
   switch (reason) {
     case ESP_SLEEP_WAKEUP_EXT0:
+      motivoBoot = "pir";
       Serial.println("[boot] acordei por causa do PIR (movimento detectado)");
       break;
     default:
+      motivoBoot = "normal";
       Serial.println("[boot] boot normal (ligado na tomada/USB, não foi wake de deep sleep)");
       break;
   }
@@ -201,6 +324,8 @@ void setup() {
   server.on("/", handleRoot);
   server.on("/capture", handleCapture);
   server.on("/pir", handlePir);
+  server.on("/status", handleStatus);
+  server.on("/keepalive", handleKeepalive);
   server.begin();
   Serial.println("Servidor HTTP no ar. Capture em /capture");
 }
@@ -222,6 +347,16 @@ void loop() {
   unsigned long now = millis();
   bool semMovimentoHaTempoDemais = (now - lastMotionMs) > HANGOVER_MS;
   bool acordadoHaTempoDemais = (now - bootMs) > MAX_AWAKE_MS;
+
+  // Enquanto alguém estiver assistindo pelo dashboard, as duas condições acima
+  // ficam suspensas — senão a janela ao vivo morreria 10s depois do bicho sair
+  // do quadro, que é justamente quando a pessoa ainda está olhando. O que
+  // limita a sessão são o vencimento do keepalive e o MAX_LIVE_MS, os dois
+  // dentro de sessaoAoVivoAtiva().
+  if (sessaoAoVivoAtiva()) {
+    return;
+  }
+
   if (semMovimentoHaTempoDemais || acordadoHaTempoDemais) {
     goToSleep();
   }

@@ -190,6 +190,103 @@
   }
   .filtro-ativo a { color: var(--texto-2); }
 
+  /* ---- câmera ----------------------------------------------------------- */
+  .camera {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+    margin-bottom: 14px;
+  }
+  .camera .info { flex: 1 1 200px; min-width: 0; }
+  .camera .titulo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 16px;
+  }
+  .camera .luz {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--texto-3);
+    flex: none;
+  }
+  .camera[data-estado="acordado"] .luz {
+    background: var(--acento);
+    /* Pulsa só pra quem não pediu pra parar: a animação é informação
+       secundária, o texto ao lado já diz tudo. */
+    animation: pulso 2s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .camera[data-estado="acordado"] .luz { animation: none; }
+  }
+  @keyframes pulso { 50% { opacity: 0.35; } }
+  .camera .detalhe {
+    margin: 2px 0 0;
+    font-size: 14px;
+    color: var(--texto-2);
+  }
+  .camera .conta {
+    font-variant-numeric: tabular-nums;
+    color: var(--texto);
+    font-weight: 600;
+  }
+
+  /* ---- janela ao vivo ---------------------------------------------------- */
+  #aovivo {
+    border: none;
+    padding: 0;
+    width: min(96vw, 760px);
+    background: var(--superficie);
+    color: var(--texto);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  #aovivo::backdrop { background: rgba(0,0,0,0.72); }
+  #aovivo .palco {
+    position: relative;
+    background: #000;
+    aspect-ratio: 4 / 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #aovivo .palco img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+  #aovivo .palco .vazio {
+    color: #cfcfc7;
+    font-size: 14px;
+    padding: 20px;
+    text-align: center;
+  }
+  #aovivo .barra {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    font-size: 14px;
+  }
+  #aovivo .barra .msg { flex: 1 1 auto; color: var(--texto-2); min-width: 0; }
+  #aovivo .fechar {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+    font-size: 20px;
+    cursor: pointer;
+  }
+
   /* ---- resumo ----------------------------------------------------------- */
   .resumo {
     display: grid;
@@ -476,6 +573,27 @@
     <p class="aviso">As datas estavam de trás pra frente, então eu inverti pra você.</p>
   {% endif %}
 
+  {% if tem_camera %}
+  <section class="cartao camera" id="camera" data-estado="carregando" aria-live="polite">
+    <div class="info">
+      <p class="titulo"><span class="luz" aria-hidden="true"></span> Câmera da varanda</p>
+      <p class="detalhe" id="camera-detalhe">Vendo como ela está…</p>
+    </div>
+    <button class="botao" id="camera-ver" type="button" hidden>Ver ao vivo</button>
+  </section>
+
+  <dialog id="aovivo" aria-label="Câmera ao vivo">
+    <div class="palco">
+      <img id="aovivo-img" alt="Imagem ao vivo da câmera da varanda" hidden>
+      <p class="vazio" id="aovivo-vazio">Pedindo a primeira imagem…</p>
+      <button class="fechar" id="aovivo-fechar" type="button" aria-label="Fechar">✕</button>
+    </div>
+    <div class="barra">
+      <span class="msg" id="aovivo-msg"></span>
+    </div>
+  </dialog>
+  {% endif %}
+
   <nav class="atalhos" aria-label="Período">
     {% for a in atalhos %}
       <a class="pilula" href="{{ a.url }}"{% if a.ativo %} aria-current="true"{% endif %}>{{ a.label }}</a>
@@ -727,5 +845,172 @@
     visor.addEventListener("close", function () { img.removeAttribute("src"); });
   })();
 </script>
+
+{% if tem_camera %}
+<script>
+  // ---- câmera: estado + janela ao vivo ----
+  // Intervalos. O keepalive tem que ser bem menor que o LIVE_GRACE_MS do
+  // firmware (20s), senão um ping perdido na rede derruba a sessão.
+  (function () {
+    var ESTADO_MS = 10000;      // de quanto em quanto tempo perguntar o estado
+    var KEEPALIVE_MS = 5000;    // de quanto em quanto tempo segurar acordado
+    var cartao = document.getElementById("camera");
+    var detalhe = document.getElementById("camera-detalhe");
+    var botao = document.getElementById("camera-ver");
+    var janela = document.getElementById("aovivo");
+    var img = document.getElementById("aovivo-img");
+    var vazio = document.getElementById("aovivo-vazio");
+    var msg = document.getElementById("aovivo-msg");
+    if (!cartao || !janela) return;
+
+    var ultimo = null;          // último estado recebido do servidor
+    var tiqueLocal = null;      // conta os segundos entre duas consultas
+    var timerEstado = null;
+    var aoVivo = false;
+    var timerFrame = null;
+    var timerKeepalive = null;
+
+    function seg(s) {
+      s = Math.max(0, Math.round(s));
+      var m = Math.floor(s / 60);
+      return m > 0 ? m + "min " + (s % 60) + "s" : s + "s";
+    }
+
+    function pintar() {
+      var e = ultimo;
+      if (!e) return;
+      cartao.dataset.estado = e.estado;
+
+      if (e.estado === "acordado") {
+        var falta = e.dorme_em_s;
+        detalhe.innerHTML = e.movimento_agora
+          ? "Acordada, com movimento na frente dela agora."
+          : 'Acordada. Dorme em <span class="conta">' + seg(falta) + "</span> se nada se mexer.";
+        botao.hidden = false;
+      } else {
+        // Nunca afirmamos "está dormindo": da rede, dormindo, sem bateria e
+        // fora de alcance do Wi-Fi são a mesma coisa.
+        detalhe.textContent =
+          "Sem resposta — provavelmente dormindo pra poupar bateria. " +
+          "Ela acorda sozinha quando algo se mexer na frente dela.";
+        botao.hidden = true;
+        if (aoVivo) encerrar("A câmera foi dormir.");
+      }
+    }
+
+    function aplicar(e) {
+      ultimo = e;
+      if (tiqueLocal) clearInterval(tiqueLocal);
+      if (e.estado === "acordado") {
+        // Entre duas consultas ao servidor, a contagem continua andando aqui,
+        // pra não ficar parada 10s e depois pular.
+        tiqueLocal = setInterval(function () {
+          if (!ultimo || ultimo.estado !== "acordado") return;
+          ultimo.dorme_em_s = Math.max(0, ultimo.dorme_em_s - 1);
+          pintar();
+        }, 1000);
+      }
+      pintar();
+    }
+
+    function consultar() {
+      return fetch("/camera/estado", { cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(aplicar)
+        .catch(function () { aplicar({ estado: "sem_resposta" }); });
+    }
+
+    // ---- janela ao vivo ----
+    function proximoFrame() {
+      if (!aoVivo) return;
+      var url = "/camera/frame?t=" + Date.now();
+      var novo = new Image();
+      novo.onload = function () {
+        if (!aoVivo) return;
+        img.src = novo.src;
+        img.hidden = false;
+        vazio.hidden = true;
+        msg.textContent = "Atualizando a cada captura. Pode demorar alguns segundos entre uma e outra.";
+        timerFrame = setTimeout(proximoFrame, 300);
+      };
+      novo.onerror = function () {
+        if (!aoVivo) return;
+        // Uma captura falha de vez em quando no AI-Thinker; só desiste se a
+        // câmera parar de responder de vez, o que o keepalive detecta.
+        msg.textContent = "Essa captura falhou, tentando de novo…";
+        timerFrame = setTimeout(proximoFrame, 1500);
+      };
+      novo.src = url;
+    }
+
+    function segurarAcordado() {
+      if (!aoVivo) return;
+      fetch("/camera/keepalive", { method: "POST", cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(function (e) {
+          if (!aoVivo) return;
+          if (e.estado === "teto") {
+            encerrar("Sessão ao vivo encerrada: a câmera tem um limite de tempo acordada pra poupar bateria.");
+            return;
+          }
+          if (e.estado !== "acordado") {
+            encerrar("A câmera parou de responder.");
+            return;
+          }
+          aplicar(e);
+          timerKeepalive = setTimeout(segurarAcordado, KEEPALIVE_MS);
+        })
+        .catch(function () {
+          if (aoVivo) encerrar("Perdi a conexão com a câmera.");
+        });
+    }
+
+    function encerrar(motivo) {
+      aoVivo = false;
+      clearTimeout(timerFrame);
+      clearTimeout(timerKeepalive);
+      img.removeAttribute("src");   // solta o JPEG da memória
+      img.hidden = true;
+      vazio.hidden = false;
+      vazio.textContent = motivo || "";
+      msg.textContent = motivo || "";
+      if (janela.open && motivo === undefined) janela.close();
+      consultar();
+    }
+
+    botao.addEventListener("click", function () {
+      aoVivo = true;
+      img.hidden = true;
+      vazio.hidden = false;
+      vazio.textContent = "Pedindo a primeira imagem…";
+      msg.textContent = "";
+      janela.showModal();
+      segurarAcordado();   // segura acordado antes de pedir o primeiro frame
+      proximoFrame();
+    });
+
+    document.getElementById("aovivo-fechar").addEventListener("click", function () { janela.close(); });
+    janela.addEventListener("click", function (ev) { if (ev.target === janela) janela.close(); });
+    // Fechar (pelo X, pelo fundo ou pelo Esc) para os pings: a partir daí o ESP
+    // volta a dormir sozinho, sem ninguém segurando ele acordado à toa.
+    janela.addEventListener("close", function () { encerrar(undefined); });
+
+    // Aba escondida não precisa perguntar nada — e, principalmente, não deve
+    // continuar segurando o ESP acordado.
+    document.addEventListener("visibilitychange", function () {
+      if (document.hidden) {
+        clearInterval(timerEstado);
+        if (janela.open) janela.close();
+      } else {
+        consultar();
+        timerEstado = setInterval(consultar, ESTADO_MS);
+      }
+    });
+
+    consultar();
+    timerEstado = setInterval(consultar, ESTADO_MS);
+  })();
+</script>
+{% endif %}
 </body>
 </html>

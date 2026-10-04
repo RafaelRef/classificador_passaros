@@ -148,6 +148,22 @@ deep sleep sozinho e volta a dormir sozinho sem movimento. O endpoint
 diagnóstico remoto, caso precise depurar de novo no futuro sem acesso físico à
 placa.
 
+### Endpoints do firmware
+
+| rota | o que faz |
+|---|---|
+| `GET /` | texto curto, serve de "você está vivo?" |
+| `GET /capture` | um JPEG agora — é o que o `ESP32CamSource` consome |
+| `GET /pir` | estado bruto do pino (`HIGH`/`LOW`), diagnóstico |
+| `GET /status` | JSON com há quanto tempo está acordado, há quanto tempo sem movimento, em quanto tempo vai dormir, e se há sessão ao vivo em curso |
+| `GET/POST /keepalive` | segura ele acordado por mais `LIVE_GRACE_MS`; responde 409 quando a sessão ao vivo bate o teto de `MAX_LIVE_MS` |
+
+`/status` e `/keepalive` existem pro cartão da câmera no dashboard (seção
+abaixo). Os três tempos que mandam no sono são constantes no topo do
+`main.cpp`: `HANGOVER_MS` (10s sem movimento), `MAX_AWAKE_MS` (2min de teto) e,
+só durante uma sessão ao vivo, `LIVE_GRACE_MS` (20s por ping) com `MAX_LIVE_MS`
+(5min) de teto absoluto.
+
 ## Dashboard web
 
 Página somente-leitura que lê direto de `data/sightings.db` — não precisa do
@@ -165,6 +181,34 @@ virar um gráfico ilegível), ranking de espécies, e a lista de avistamentos
 recentes com miniatura da foto, confiança e horário. Tem filtro por data
 (atalhos de "Hoje"/"7 dias"/"30 dias"/"Tudo" ou um intervalo customizado).
 
+### A câmera no dashboard
+
+Com `ESP32_CAM_URL` preenchido no `.env`, aparece um cartão no topo da página
+com o estado da câmera e, quando ela está acordada, um botão "Ver ao vivo" que
+abre uma janela com as capturas se renovando. Sem essa variável, o cartão
+simplesmente não existe — quem está mexendo só no dashboard não precisa de
+câmera nenhuma.
+
+Enquanto a janela ao vivo está aberta, o navegador chama `/camera/keepalive` a
+cada 5s, e isso segura o ESP acordado. **Sem isso a janela duraria 10 segundos**:
+é o `HANGOVER_MS` do firmware, que manda dormir assim que o bicho sai da frente
+do sensor. Fechar a janela (ou esconder a aba) para os pings, e ele volta a
+dormir sozinho. Uma sessão ao vivo dura no máximo 5 minutos, e depois disso o
+ESP recusa novos pedidos até dormir e acordar de novo — senão uma aba esquecida
+aberta seguraria ele acordado até a bateria acabar.
+
+**Não dá pra acordar a câmera pelo site, e isso não é falta de código.** Em deep
+sleep o ESP32 desliga o rádio Wi-Fi e a CPU: não existe nada escutando a rede
+pra receber o pedido. A única fonte de despertar armada é o GPIO do PIR, ou
+seja, movimento de verdade na frente da câmera. Por isso o cartão nunca afirma
+"está dormindo", e sim "sem resposta": da rede, dormindo, sem bateria, travado e
+fora do alcance do Wi-Fi são exatamente a mesma coisa.
+
+Se um dia valer a pena acordar remotamente, o caminho é armar também
+`esp_sleep_enable_timer_wakeup()` no firmware, pro ESP acordar sozinho de tempos
+em tempos e checar se há pedido pendente no servidor. Custa bateria a cada
+despertar, mesmo quando ninguém pediu nada — foi por isso que ficou de fora.
+
 ### Trabalhando só no dashboard (sem o resto do projeto)
 
 `data/sightings.db` e `data/captures/` são ignorados pelo Git de propósito
@@ -177,7 +221,7 @@ do Claude Code, outra máquina, etc):
 git clone https://github.com/RafaelRef/classificador_passaros.git
 cd classificador_passaros
 python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt   # ou só "pip install flask opencv-python numpy", mais rápido, se for mexer só no dashboard
+pip install -r requirements.txt   # ou só "pip install flask opencv-python numpy python-dotenv requests", mais rápido, se for mexer só no dashboard
 python -m scripts.seed_dashboard_data    # gera ~40 avistamentos + fotos fake em data/
 python -m src.dashboard
 ```
