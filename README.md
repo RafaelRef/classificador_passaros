@@ -209,6 +209,10 @@ Se um dia valer a pena acordar remotamente, o caminho é armar também
 em tempos e checar se há pedido pendente no servidor. Custa bateria a cada
 despertar, mesmo quando ninguém pediu nada — foi por isso que ficou de fora.
 
+> **Em validação.** O software está pronto e testado contra um ESP32 simulado,
+> mas o firmware ainda não foi gravado nem testado na placa de verdade. O passo
+> a passo pra validar está em [INTEGRACAO-CAMERA.md](INTEGRACAO-CAMERA.md).
+
 ### Trabalhando só no dashboard (sem o resto do projeto)
 
 `data/sightings.db` e `data/captures/` são ignorados pelo Git de propósito
