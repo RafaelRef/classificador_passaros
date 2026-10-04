@@ -88,18 +88,37 @@ sono do firmware.
 | Lógica de sono em uint32 | 10/10, incluindo o rollover do `millis()` aos 49 dias |
 | Regressão do dashboard | 6 rotas 200; smoke test do pipeline passa |
 
-## O que NÃO foi verificado
+## Atualização (2026-10-04): validado na placa de verdade
 
-**O firmware nunca foi compilado.** A máquina onde isso foi escrito não tinha
-gcc nem PlatformIO. A *lógica* de sono foi validada portando as funções pra
-Python com aritmética de 32 bits (`tests_manual/sim_firmware.py`, 10 casos), e a
-ordem de definição das funções e o escape do JSON foram conferidos à mão — mas
-nada disso substitui um `pio run`. **Assuma que o primeiro build pode falhar.**
+Rodado numa máquina com PlatformIO e a placa física:
 
-Também não foram testados no hardware: a latência real do `/capture` durante uma
-sessão ao vivo (o README fala em 0,3 a 8s por captura, o que pode deixar a
-janela "ao vivo" bem travada), o consumo de bateria de uma sessão de 5 minutos,
-e o comportamento do Wi-Fi do AI-Thinker sob o polling contínuo de frames.
+- **`pio run` compilou de primeira**, sem erros (só os warnings de depreciação
+  do `pin_sscb_*` que já existiam antes, nada relacionado a este trabalho).
+- Gravado e confirmado via `curl` direto no ESP: `/status` e `/keepalive`
+  respondem com o JSON esperado (`ao_vivo`, `dorme_em_ms` etc — ver exemplos no
+  Passo 2 abaixo).
+- Dashboard ligado no IP real (`ESP32_CAM_URL` no `.env`) mostra o cartão com
+  contagem regressiva de verdade e o botão "Ver ao vivo" abre a janela com o
+  frame da câmera atualizando.
+- **Bônus, fora do escopo original**: `/camera/frame` agora roda o mesmo
+  `AnimalDetector` (YOLO) do `src/main.py` no frame antes de servir, desenhando
+  a mesma caixa + `"classe XX%"` do preview local — era o pedido seguinte de
+  quem testou. Carregado sob demanda (só no primeiro frame ao vivo pedido);
+  se `ultralytics`/`torch` não estiverem instalados, volta a servir o frame
+  sem anotação em vez de quebrar a página. Isso também significa que cada
+  frame ao vivo agora é mais lento (YOLO + captura do ESP: ~2,3s observado),
+  vale reavaliar se ficar incômodo.
+
+## O que ainda NÃO foi verificado
+
+- **Latência sustentada numa sessão ao vivo longa.** Os testes foram
+  requisições avulsas (`curl`), não uma janela aberta minutos a fio com
+  polling contínuo do navegador. O README já registra 0,3–8s por `/capture`
+  sem detecção; com a detecção YOLO somada, pode acumular.
+- **Consumo de bateria de uma sessão de 5 minutos.** Ainda não há bateria/
+  painel solar montado no projeto (fase seguinte do roadmap).
+- **Comportamento do Wi-Fi do AI-Thinker sob polling contínuo prolongado**
+  (minutos, não só algumas chamadas).
 
 ---
 
