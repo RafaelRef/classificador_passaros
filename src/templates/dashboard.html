@@ -3,403 +3,729 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pássaros App — avistamentos</title>
+<title>Pássaros na varanda</title>
 <style>
+  /* Tema claro e escuro só com variáveis + prefers-color-scheme: nada de
+     botãozinho de tema, porque ninguém da família ia procurar por ele — o
+     celular deles já sabe se é dia ou noite. */
   :root {
     color-scheme: light;
-    --surface-1:      #fcfcfb;
-    --page-plane:     #f9f9f7;
-    --text-primary:   #0b0b0b;
-    --text-secondary: #52514e;
-    --text-muted:     #898781;
-    --gridline:       #e1e0d9;
-    --baseline:       #c3c2b7;
-    --border:         rgba(11,11,11,0.10);
-    --series-1:       #2a78d6;
-    --series-1-wash:  rgba(42,120,214,0.10);
+    --fundo:          #f6f5f1;
+    --superficie:     #ffffff;
+    --texto:          #16160f;
+    --texto-2:        #55544d;
+    --texto-3:        #7e7d74;
+    --linha:          #e3e1d8;
+    --borda:          rgba(22,22,15,0.12);
+    --acento:         #0d6e62;
+    --acento-texto:   #ffffff;
+    --acento-fraco:   rgba(13,110,98,0.14);
+    --novo-fundo:     #fcecc9;
+    --novo-texto:     #74450a;
+    --aviso-fundo:    #fdf3dd;
+    --aviso-texto:    #5f4410;
+    --sombra:         0 1px 2px rgba(22,22,15,0.06);
   }
   @media (prefers-color-scheme: dark) {
     :root {
       color-scheme: dark;
-      --surface-1:      #1a1a19;
-      --page-plane:     #0d0d0d;
-      --text-primary:   #ffffff;
-      --text-secondary: #c3c2b7;
-      --text-muted:     #898781;
-      --gridline:       #2c2c2a;
-      --baseline:       #383835;
-      --border:         rgba(255,255,255,0.10);
-      --series-1:       #3987e5;
-      --series-1-wash:  rgba(57,135,229,0.14);
+      --fundo:        #101110;
+      --superficie:   #1b1c1a;
+      --texto:        #f3f2ed;
+      --texto-2:      #bdbcb3;
+      --texto-3:      #8e8d85;
+      --linha:        #2c2d2a;
+      --borda:        rgba(255,255,255,0.13);
+      --acento:       #5bd0bd;
+      --acento-texto: #06231f;
+      --acento-fraco: rgba(91,208,189,0.18);
+      --novo-fundo:   rgba(245,180,70,0.18);
+      --novo-texto:   #f6cf8d;
+      --aviso-fundo:  rgba(245,180,70,0.14);
+      --aviso-texto:  #f0d7a6;
+      --sombra:       none;
     }
   }
 
   * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
   body {
     margin: 0;
-    background: var(--page-plane);
-    color: var(--text-primary);
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--fundo);
+    color: var(--texto);
+    /* 17px de base: a página é lida de longe, por gente que não gosta de
+       apertar os olhos. O dashboard antigo tinha quase tudo em 13px. */
+    font: 17px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   }
-  .page {
-    max-width: 1040px;
+  .pagina {
+    max-width: 980px;
     margin: 0 auto;
-    padding: 24px 16px 64px;
+    padding: 20px 14px 56px;
   }
   h1 {
-    font-size: 20px;
+    font-size: 24px;
+    line-height: 1.2;
     margin: 0 0 4px;
+    letter-spacing: -0.01em;
   }
-  .subtitle {
-    color: var(--text-secondary);
-    font-size: 14px;
-    margin: 0 0 20px;
+  h2 {
+    font-size: 17px;
+    margin: 0 0 12px;
+  }
+  a { color: inherit; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0 0 0 0); white-space: nowrap; border: 0;
   }
 
-  .card {
-    background: var(--surface-1);
-    border: 1px solid var(--border);
+  .cartao {
+    background: var(--superficie);
+    border: 1px solid var(--borda);
+    border-radius: 14px;
+    padding: 14px;
+    box-shadow: var(--sombra);
+    margin-bottom: 14px;
+  }
+
+  .status {
+    margin: 0 0 16px;
+    color: var(--texto-2);
+    font-size: 16px;
+  }
+
+  .aviso {
+    background: var(--aviso-fundo);
+    color: var(--aviso-texto);
     border-radius: 12px;
-    padding: 16px;
-  }
-
-  /* ---- filtro ---- */
-  .filters {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 20px;
-  }
-  .filters form {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-  }
-  .filters input[type="date"] {
-    font: inherit;
-    color: var(--text-primary);
-    background: var(--surface-1);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 6px 10px;
-    min-width: 0;
-  }
-  @media (max-width: 480px) {
-    .filters, .filters form { flex-direction: column; align-items: stretch; }
-    .filters form { width: 100%; }
-    .filters input[type="date"] { width: 100%; }
-  }
-  .btn, .preset {
-    font: inherit;
-    font-size: 13px;
-    color: var(--text-primary);
-    background: var(--surface-1);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 6px 12px;
-    cursor: pointer;
-    text-decoration: none;
-    display: inline-block;
-  }
-  .btn:hover, .preset:hover {
-    background: var(--gridline);
-  }
-  .btn.primary {
-    background: var(--series-1);
-    border-color: var(--series-1);
-    color: #ffffff;
-  }
-
-  /* ---- stat tiles ---- */
-  .tiles {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 12px;
-    margin-bottom: 20px;
-  }
-  @media (max-width: 480px) {
-    .tiles { grid-template-columns: 1fr; }
-  }
-  .tile .label {
-    font-size: 13px;
-    color: var(--text-secondary);
-    margin: 0 0 6px;
-  }
-  .tile .value {
-    font-size: 28px;
-    font-weight: 600;
-    font-variant-numeric: proportional-nums;
-  }
-
-  /* ---- charts ---- */
-  .charts {
-    display: grid;
-    grid-template-columns: 1.3fr 1fr;
-    gap: 12px;
-    margin-bottom: 20px;
-  }
-  @media (max-width: 720px) {
-    .charts { grid-template-columns: 1fr; }
-  }
-  .card h2 {
-    font-size: 14px;
-    font-weight: 600;
+    padding: 11px 13px;
     margin: 0 0 14px;
+    font-size: 15px;
   }
 
-  .daychart {
+  /* ---- período ---------------------------------------------------------- */
+  /* Os atalhos ficam numa linha só mesmo em 375px (quatro pílulas curtas
+     somam ~300px); o que virava quatro blocos de largura total na versão
+     antiga era o flex-direction:column do media query, que saiu daqui. */
+  .atalhos {
     display: flex;
-    align-items: flex-end;
-    gap: 2px;
-    height: 160px;
-    border-bottom: 1px solid var(--baseline);
-    padding-top: 8px;
-    overflow-x: auto;
-  }
-  .daychart .col {
-    flex: 1 1 0;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-    height: 100%;
-    min-width: 2px;
-  }
-  .daychart .bar {
-    width: 100%;
-    max-width: 24px;
-    min-height: 2px;
-    background: var(--series-1);
-    border-radius: 4px 4px 0 0;
-    cursor: default;
-  }
-  .daychart-labels {
-    display: flex;
-    gap: 2px;
-    margin-top: 6px;
-  }
-  .daychart-labels span {
-    flex: 1 1 0;
-    text-align: center;
-    font-size: 10px;
-    color: var(--text-muted);
-    white-space: nowrap;
-    overflow: visible;
-  }
-
-  .speciesbars .row {
-    display: grid;
-    grid-template-columns: 120px 1fr 32px;
-    align-items: center;
+    flex-wrap: wrap;
     gap: 8px;
     margin-bottom: 10px;
   }
-  .speciesbars .name {
-    font-size: 13px;
-    color: var(--text-secondary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .speciesbars .track {
-    background: var(--gridline);
-    border-radius: 4px;
-    height: 16px;
-    overflow: hidden;
-  }
-  .speciesbars .fill {
-    background: var(--series-1);
-    height: 100%;
-    border-radius: 4px;
-    min-width: 4px;
-  }
-  .speciesbars .count {
-    font-size: 13px;
-    font-variant-numeric: tabular-nums;
-    color: var(--text-secondary);
-    text-align: right;
-  }
-
-  .empty {
-    color: var(--text-muted);
-    font-size: 13px;
-    padding: 12px 0;
-  }
-
-  /* ---- tabela ---- */
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-  }
-  thead th {
-    text-align: left;
-    color: var(--text-muted);
-    font-weight: 500;
-    font-size: 12px;
-    padding: 8px 10px;
-    border-bottom: 1px solid var(--gridline);
-  }
-  tbody td {
-    padding: 8px 10px;
-    border-bottom: 1px solid var(--gridline);
-    vertical-align: middle;
-  }
-  tbody tr:last-child td { border-bottom: none; }
-  .thumb {
-    width: 48px;
-    height: 48px;
-    border-radius: 8px;
-    object-fit: cover;
-    display: block;
-    background: var(--gridline);
-  }
-  .species-common { font-weight: 500; }
-  .species-sci { color: var(--text-secondary); font-size: 12px; font-style: italic; }
-  .confidence, .when { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
-  .source-badge {
-    display: inline-block;
-    font-size: 11px;
-    color: var(--text-muted);
-    border: 1px solid var(--border);
+  .pilula {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;              /* alvo de toque confortável */
+    padding: 0 16px;
     border-radius: 999px;
-    padding: 1px 8px;
+    border: 1px solid var(--borda);
+    background: var(--superficie);
+    color: var(--texto);
+    font-size: 16px;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .pilula[aria-current="true"] {
+    background: var(--acento);
+    border-color: var(--acento);
+    color: var(--acento-texto);
+    font-weight: 600;
   }
 
-  /* ---- tooltip ---- */
-  #tooltip {
-    position: fixed;
-    pointer-events: none;
-    background: var(--text-primary);
-    color: var(--surface-1);
-    font-size: 12px;
-    padding: 4px 8px;
-    border-radius: 6px;
-    opacity: 0;
-    transform: translate(-50%, -100%);
-    white-space: nowrap;
-    z-index: 10;
+  details.intervalo { margin-bottom: 16px; }
+  details.intervalo summary {
+    display: inline-block;
+    padding: 8px 2px;
+    color: var(--texto-2);
+    font-size: 15px;
+    cursor: pointer;
   }
+  .intervalo form {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-top: 10px;
+    max-width: 380px;
+  }
+  .intervalo label {
+    display: block;
+    font-size: 14px;
+    color: var(--texto-2);
+    margin-bottom: 4px;
+  }
+  .intervalo input[type="date"] {
+    font: inherit;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    color: var(--texto);
+    background: var(--superficie);
+    border: 1px solid var(--borda);
+    border-radius: 10px;
+    padding: 10px;
+  }
+  .botao {
+    font: inherit;
+    font-weight: 600;
+    min-height: 44px;
+    padding: 0 18px;
+    border-radius: 10px;
+    border: 1px solid var(--acento);
+    background: var(--acento);
+    color: var(--acento-texto);
+    cursor: pointer;
+  }
+
+  .filtro-ativo {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    background: var(--acento-fraco);
+    border-radius: 12px;
+    padding: 10px 13px;
+    margin: 0 0 14px;
+    font-size: 16px;
+  }
+  .filtro-ativo a { color: var(--texto-2); }
+
+  /* ---- resumo ----------------------------------------------------------- */
+  .resumo {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    text-align: center;
+  }
+  .resumo div + div { border-left: 1px solid var(--linha); }
+  .resumo .valor {
+    display: block;
+    font-size: 28px;
+    font-weight: 650;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+  .resumo .rotulo {
+    display: block;
+    font-size: 13px;
+    color: var(--texto-2);
+    margin-top: 2px;
+    overflow-wrap: anywhere;
+  }
+
+  /* ---- quem apareceu ----------------------------------------------------- */
+  /* A barra é o fundo da própria linha: um elemento só, nunca estoura em
+     largura nenhuma, e a linha inteira (44px de altura) é o alvo de toque. */
+  .especie {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 4px 10px;
+    margin: 0 -10px;
+    border-radius: 9px;
+    text-decoration: none;
+    color: inherit;
+  }
+  .especie:hover { outline: 1px solid var(--borda); }
+  .especie[aria-current="true"] {
+    outline: 2px solid var(--acento);
+    font-weight: 600;
+  }
+  .especie .nome {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .especie .qtd {
+    flex: 0 0 auto;
+    color: var(--texto-2);
+    font-variant-numeric: tabular-nums;
+  }
+  .selo-novo {
+    flex: 0 0 auto;
+    background: var(--novo-fundo);
+    color: var(--novo-texto);
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 999px;
+    padding: 2px 8px;
+    white-space: nowrap;
+  }
+  details.mais-especies summary {
+    padding: 10px 0 2px;
+    color: var(--texto-2);
+    font-size: 15px;
+    cursor: pointer;
+  }
+
+  /* ---- feed -------------------------------------------------------------- */
+  .dia {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    margin: 20px 0 10px;
+    padding: 8px 0;
+    background: var(--fundo);
+    font-size: 16px;
+    font-weight: 650;
+  }
+  .dia span { font-weight: 400; color: var(--texto-3); }
+
+  .grade {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+    gap: 12px;
+  }
+  .foto {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    border-radius: 12px;
+  }
+  .foto:focus-visible { outline: 3px solid var(--acento); outline-offset: 3px; }
+  .moldura {
+    display: block;
+    position: relative;
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--linha);
+    border: 1px solid var(--borda);
+  }
+  /* aspect-ratio reserva o espaço antes da foto chegar, então a página não
+     pula enquanto as miniaturas carregam preguiçosamente. */
+  .moldura img {
+    display: block;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+  }
+  .moldura .selo-novo {
+    position: absolute;
+    top: 7px;
+    left: 7px;
+  }
+  .lupa {
+    position: absolute;
+    right: 6px;
+    bottom: 6px;
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+    font-size: 12px;
+    border-radius: 999px;
+    padding: 2px 8px;
+  }
+  .legenda { display: block; padding: 7px 2px 0; }
+  .legenda .nome {
+    display: block;
+    font-weight: 600;
+    font-size: 16px;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+  .legenda .meta {
+    display: block;
+    font-size: 14px;
+    color: var(--texto-2);
+    margin-top: 1px;
+  }
+  .ponto {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: baseline;
+    background: var(--texto-3);
+  }
+  .ponto.alta  { background: var(--acento); }
+  .ponto.media { background: var(--texto-3); }
+  .ponto.baixa { background: #c08a2e; }
+
+  .paginacao { margin-top: 22px; text-align: center; }
+  .paginacao .botao { display: inline-block; line-height: 44px; text-decoration: none; }
+  .paginacao p { color: var(--texto-2); font-size: 14px; margin: 10px 0 0; }
+
+  .vazio {
+    color: var(--texto-2);
+    font-size: 16px;
+    padding: 18px 0;
+    text-align: center;
+  }
+  .vazio a { color: var(--acento); }
+
+  /* ---- movimento --------------------------------------------------------- */
+  .graficos { display: grid; grid-template-columns: 1fr; gap: 20px; }
+  @media (min-width: 720px) {
+    .graficos { grid-template-columns: 1.4fr 1fr; }
+  }
+  .grafico h3 { font-size: 15px; margin: 0 0 10px; font-weight: 600; }
+  /* flex:1 1 0 + min-width:0 em cada coluna: o gráfico se espreme pra caber
+     em qualquer largura em vez de empurrar a página pro lado. */
+  .barras {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 84px;
+    border-bottom: 1px solid var(--linha);
+  }
+  .barras .col {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    align-items: flex-end;
+  }
+  .barras .b {
+    width: 100%;
+    border-radius: 3px 3px 0 0;
+    background: var(--acento);
+    min-height: 3px;
+  }
+  .barras .b.zero { background: var(--linha); }
+  .eixo {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--texto-3);
+    margin-top: 5px;
+  }
+  .grafico figcaption {
+    font-size: 14px;
+    color: var(--texto-2);
+    margin-top: 8px;
+  }
+  figure { margin: 0; }
+
+  .rodape {
+    margin-top: 28px;
+    font-size: 13px;
+    color: var(--texto-3);
+    text-align: center;
+  }
+  .rodape code { font-size: 12px; }
+
+  /* ---- visor da foto ----------------------------------------------------- */
+  #visor {
+    border: 0;
+    padding: 0;
+    width: min(94vw, 880px);
+    max-width: 94vw;
+    max-height: 92vh;
+    border-radius: 16px;
+    overflow: auto;
+    background: var(--superficie);
+    color: var(--texto);
+  }
+  #visor::backdrop { background: rgba(0,0,0,0.78); }
+  .visor-palco { position: relative; background: #000; }
+  #visor-img {
+    display: block;
+    width: 100%;
+    max-height: 60vh;
+    object-fit: contain;
+  }
+  .visor-bt {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 46px; height: 46px;
+    border-radius: 50%;
+    border: 0;
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  #visor-ant { left: 8px; }
+  #visor-prox { right: 8px; }
+  #visor-fechar {
+    position: absolute;
+    top: 8px; right: 8px;
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    border: 0;
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .visor-info { padding: 14px 16px 18px; }
+  .visor-info h3 { margin: 0; font-size: 20px; }
+  .visor-info em { color: var(--texto-2); font-size: 15px; }
+  .visor-info p { margin: 8px 0 0; color: var(--texto-2); font-size: 15px; }
+  #visor-contador { color: var(--texto-3); font-size: 13px; }
 </style>
 </head>
 <body>
-<div class="page">
-  <h1>🐦 Pássaros App — avistamentos</h1>
-  <p class="subtitle">Lendo direto de <code>data/sightings.db</code> — não precisa do pipeline rodando pra ver os dados já coletados.</p>
+<main class="pagina">
 
-  <div class="filters">
-    {% for preset in presets %}
-      <a class="preset" href="/?start={{ preset.start }}&end={{ preset.end }}">{{ preset.label }}</a>
+  <header>
+    <h1>🐦 Pássaros na varanda</h1>
+    <p class="status">{{ status }}</p>
+  </header>
+
+  {% if sem_banco %}
+    <p class="aviso">Não encontrei o banco de dados ainda (<code>data/sightings.db</code>). A página funciona assim mesmo — assim que o primeiro pássaro for registrado, ele aparece aqui.</p>
+  {% elif banco_vazio %}
+    <p class="aviso">O banco existe, mas ainda não tem nenhum avistamento registrado.</p>
+  {% endif %}
+
+  {% if datas_invertidas %}
+    <p class="aviso">As datas estavam de trás pra frente, então eu inverti pra você.</p>
+  {% endif %}
+
+  <nav class="atalhos" aria-label="Período">
+    {% for a in atalhos %}
+      <a class="pilula" href="{{ a.url }}"{% if a.ativo %} aria-current="true"{% endif %}>{{ a.label }}</a>
     {% endfor %}
+  </nav>
+
+  <details class="intervalo"{% if intervalo_aberto %} open{% endif %}>
+    <summary>Escolher outras datas</summary>
     <form method="get" action="/">
-      <input type="date" name="start" value="{{ start }}" max="{{ today }}">
-      <span style="color:var(--text-muted)">até</span>
-      <input type="date" name="end" value="{{ end }}" max="{{ today }}">
-      <button class="btn primary" type="submit">Aplicar</button>
+      {# Mantém o filtro de espécie ao trocar o período. #}
+      {% if especie %}<input type="hidden" name="especie" value="{{ especie }}">{% endif %}
+      <div>
+        <label for="de">De</label>
+        <input id="de" type="date" name="start" value="{{ inicio }}" max="{{ hoje }}">
+      </div>
+      <div>
+        <label for="ate">Até</label>
+        <input id="ate" type="date" name="end" value="{{ fim }}" max="{{ hoje }}">
+      </div>
+      <div><button class="botao" type="submit">Ver esse período</button></div>
     </form>
-  </div>
+  </details>
 
-  <div class="tiles">
-    <div class="card tile">
-      <p class="label">Avistamentos no período</p>
-      <p class="value">{{ total }}</p>
-    </div>
-    <div class="card tile">
-      <p class="label">Espécies diferentes</p>
-      <p class="value">{{ species_count }}</p>
-    </div>
-    <div class="card tile">
-      <p class="label">Mais recente</p>
-      <p class="value" style="font-size:20px">{{ most_recent or "—" }}</p>
-    </div>
-  </div>
+  {% if especie %}
+    <p class="filtro-ativo">
+      <span>Mostrando só <strong>{{ especie }}</strong>.</span>
+      <a href="{{ url_limpar }}">Ver todas as espécies</a>
+    </p>
+  {% endif %}
 
-  <div class="charts">
-    <div class="card">
-      <h2>Avistamentos por dia</h2>
-      {% if has_day_data %}
-        <div class="daychart">
-          {% for d in day_bars %}
-            <div class="col">
-              <div class="bar" style="height: {{ d.pct }}%" data-label="{{ d.label }}" data-value="{{ d.n }}"></div>
-            </div>
+  <section class="cartao resumo" aria-label="Resumo do período">
+    <div>
+      <span class="valor">{{ resumo.total }}</span>
+      <span class="rotulo">{{ resumo.rotulo_total }}</span>
+    </div>
+    <div>
+      <span class="valor">{{ resumo.especies }}</span>
+      <span class="rotulo">Espécies</span>
+    </div>
+    <div>
+      <span class="valor">{{ resumo.novas }}</span>
+      <span class="rotulo">Nunca vistas antes</span>
+    </div>
+  </section>
+
+  <section class="cartao">
+    <h2>Quem apareceu</h2>
+    {% if ranking_topo %}
+      {% for r in ranking_topo %}
+        <a class="especie" href="{{ r.url }}"{% if r.ativa %} aria-current="true"{% endif %}
+           style="background: linear-gradient(to right, var(--acento-fraco) {{ r.pct }}%, transparent {{ r.pct }}%)">
+          <span class="nome">{{ r.nome }}</span>
+          {% if r.nova %}<span class="selo-novo">1ª vez!</span>{% endif %}
+          <span class="qtd">{{ r.n }}</span>
+        </a>
+      {% endfor %}
+      {% if ranking_resto %}
+        <details class="mais-especies">
+          <summary>Ver mais {{ ranking_resto|length }} espécie{{ "s" if ranking_resto|length > 1 else "" }}</summary>
+          {% for r in ranking_resto %}
+            <a class="especie" href="{{ r.url }}"{% if r.ativa %} aria-current="true"{% endif %}
+               style="background: linear-gradient(to right, var(--acento-fraco) {{ r.pct }}%, transparent {{ r.pct }}%)">
+              <span class="nome">{{ r.nome }}</span>
+              {% if r.nova %}<span class="selo-novo">1ª vez!</span>{% endif %}
+              <span class="qtd">{{ r.n }}</span>
+            </a>
           {% endfor %}
-        </div>
-        <div class="daychart-labels">
-          {% for d in day_bars %}
-            <span>{{ d.label if loop.index0 % (1 if day_bars|length <= 6 else (day_bars|length // 6)) == 0 else "" }}</span>
-          {% endfor %}
-        </div>
-      {% else %}
-        <p class="empty">Nenhum avistamento nesse período.</p>
+        </details>
       {% endif %}
-    </div>
-
-    <div class="card speciesbars">
-      <h2>Por espécie</h2>
-      {% if species_bars %}
-        {% for s in species_bars %}
-          <div class="row">
-            <div class="name" title="{{ s.name }}">{{ s.name }}</div>
-            <div class="track"><div class="fill" style="width: {{ s.pct }}%" data-label="{{ s.name }}" data-value="{{ s.n }}"></div></div>
-            <div class="count">{{ s.n }}</div>
-          </div>
-        {% endfor %}
-      {% else %}
-        <p class="empty">Nenhum avistamento nesse período.</p>
-      {% endif %}
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>Avistamentos recentes</h2>
-    {% if sightings %}
-      <table>
-        <thead>
-          <tr>
-            <th></th>
-            <th>Espécie</th>
-            <th>Confiança</th>
-            <th>Quando</th>
-            <th>Fonte</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for s in sightings %}
-            <tr>
-              <td><img class="thumb" src="/image/{{ s.image_filename }}" loading="lazy" alt=""></td>
-              <td>
-                <div class="species-common">{{ s.species_common_name }}</div>
-                {% if s.species_scientific_name %}<div class="species-sci">{{ s.species_scientific_name }}</div>{% endif %}
-              </td>
-              <td class="confidence">{{ (s.confidence * 100) | round | int }}%</td>
-              <td class="when">{{ s.seen_at_local }}</td>
-              <td><span class="source-badge">{{ s.source }}</span></td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
     {% else %}
-      <p class="empty">Nenhum avistamento nesse período.</p>
+      <p class="vazio">Nenhuma espécie nesse período.</p>
     {% endif %}
-  </div>
-</div>
+  </section>
 
-<div id="tooltip"></div>
+  <section class="feed">
+    <h2 class="sr-only">Fotos dos avistamentos</h2>
+    {% for g in grupos %}
+      <h3 class="dia">{{ g.rotulo }} <span>· {{ g.itens|length }} foto{{ "s" if g.itens|length > 1 else "" }}</span></h3>
+      <div class="grade">
+        {% for s in g.itens %}
+          {# O href é a foto original: sem JavaScript, ou num navegador velho
+             demais pro <dialog>, tocar aqui ainda abre o pássaro em tamanho
+             grande. O visor só intercepta o clique quando dá pra usar. #}
+          <a class="foto" href="/image/{{ s.arquivo|urlencode }}"
+             data-foto="/image/{{ s.arquivo|urlencode }}"
+             data-nome="{{ s.nome }}"
+             data-sci="{{ s.cientifico }}"
+             data-meta="{{ s.detalhe }}"
+             data-primeira="{{ '1' if s.primeira_vez else '' }}">
+            <span class="moldura">
+              <img src="/thumb/{{ s.arquivo|urlencode }}" alt="Foto: {{ s.nome }}" loading="lazy" decoding="async">
+              {% if s.primeira_vez %}<span class="selo-novo">1ª vez!</span>{% endif %}
+              <span class="lupa" aria-hidden="true">ampliar</span>
+            </span>
+            <span class="legenda">
+              <span class="nome">{{ s.nome }}</span>
+              <span class="meta">
+                {{ s.hora }} ·
+                <span class="ponto {{ s.certeza_classe }}" aria-hidden="true"></span>{{ s.certeza_rotulo }}
+              </span>
+            </span>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="cartao vazio">
+        {% if especie %}
+          <p>Nenhum registro de <strong>{{ especie }}</strong> nesse período.</p>
+          <p><a href="{{ url_limpar }}">Ver todas as espécies</a></p>
+        {% elif sem_banco or banco_vazio %}
+          <p>Quando o primeiro pássaro passar pela varanda, a foto dele aparece aqui.</p>
+        {% else %}
+          <p>Nenhum pássaro apareceu nesse período.</p>
+          <p><a href="{{ url_tudo }}">Ver desde o começo</a></p>
+        {% endif %}
+      </div>
+    {% endfor %}
+
+    {% if grupos %}
+      <div class="paginacao">
+        {% if url_mais %}
+          <a class="botao" href="{{ url_mais }}">Ver mais fotos</a>
+        {% elif url_anteriores %}
+          <a class="botao" href="{{ url_anteriores }}">Ver as mais antigas</a>
+        {% endif %}
+        <p>
+          Mostrando {{ mostrando }} de {{ total }}.
+          {% if url_anteriores %}Continua a partir de {{ anteriores_desde }}.{% endif %}
+        </p>
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="cartao">
+    <h2>Movimento na varanda</h2>
+    <div class="graficos">
+
+      <figure class="grafico">
+        <h3>Por dia</h3>
+        <div class="barras" role="img"
+             aria-label="Avistamentos ao longo do período. {{ legenda_dia or 'Nenhum avistamento.' }}">
+          {% for b in barras_dia %}
+            <span class="col"><span class="b{{ ' zero' if not b.n }}" style="height: {{ b.pct }}%"
+                  title="{{ b.rotulo }}: {{ b.n }}"></span></span>
+          {% endfor %}
+        </div>
+        <div class="eixo">
+          <span>{{ barras_dia[0].rotulo if barras_dia else "" }}</span>
+          {% if barras_dia|length > 1 %}<span>{{ barras_dia[-1].rotulo }}</span>{% endif %}
+        </div>
+        <figcaption>{{ legenda_dia or "Nenhum avistamento nesse período." }}</figcaption>
+      </figure>
+
+      <figure class="grafico">
+        <h3>Por hora do dia</h3>
+        <div class="barras" role="img"
+             aria-label="Avistamentos por hora do dia. {{ legenda_hora or 'Nenhum avistamento.' }}">
+          {% for h in barras_hora %}
+            <span class="col"><span class="b{{ ' zero' if not h.n }}" style="height: {{ h.pct }}%"
+                  title="{{ h.rotulo }}: {{ h.n }}"></span></span>
+          {% endfor %}
+        </div>
+        <div class="eixo"><span>00h</span><span>12h</span><span>23h</span></div>
+        <figcaption>{{ legenda_hora or "Nenhum avistamento nesse período." }}</figcaption>
+      </figure>
+
+    </div>
+  </section>
+
+  <p class="rodape">
+    Horários de Brasília. A página só lê <code>data/sightings.db</code> — nunca escreve nada.
+  </p>
+</main>
+
+<dialog id="visor" aria-label="Foto ampliada">
+  <div class="visor-palco">
+    <img id="visor-img" alt="">
+    <button class="visor-bt" id="visor-ant" type="button" aria-label="Foto anterior">‹</button>
+    <button class="visor-bt" id="visor-prox" type="button" aria-label="Próxima foto">›</button>
+    <button id="visor-fechar" type="button" aria-label="Fechar">✕</button>
+  </div>
+  <div class="visor-info">
+    <h3 id="visor-nome"></h3>
+    <em id="visor-sci"></em>
+    <span class="selo-novo" id="visor-selo" hidden>1ª vez que vemos essa espécie!</span>
+    <p id="visor-meta"></p>
+    <p id="visor-contador"></p>
+  </div>
+</dialog>
+
 <script>
-  const tooltip = document.getElementById("tooltip");
-  document.querySelectorAll("[data-label]").forEach((el) => {
-    el.addEventListener("mousemove", (ev) => {
-      tooltip.textContent = `${el.dataset.label}: ${el.dataset.value}`;
-      tooltip.style.left = ev.clientX + "px";
-      tooltip.style.top = (ev.clientY - 10) + "px";
-      tooltip.style.opacity = "1";
+  /* O único JavaScript da página: abrir a foto grande sem sair do feed.
+     Tudo que é filtro continua sendo link e recarga de página — é menos código
+     pra manter e continua funcionando com o JS desligado. */
+  (function () {
+    var visor = document.getElementById("visor");
+    // Navegador sem <dialog> (iPad antigo, por exemplo): não intercepta nada,
+    // e o link leva pra foto original. Pior, mas nunca quebrado.
+    if (!visor || typeof visor.showModal !== "function") return;
+
+    var fotos = Array.prototype.slice.call(document.querySelectorAll("a.foto[data-foto]"));
+    if (!fotos.length) return;
+
+    var img = document.getElementById("visor-img");
+    var nome = document.getElementById("visor-nome");
+    var sci = document.getElementById("visor-sci");
+    var meta = document.getElementById("visor-meta");
+    var selo = document.getElementById("visor-selo");
+    var contador = document.getElementById("visor-contador");
+    var atual = 0;
+
+    function mostrar(i) {
+      atual = (i + fotos.length) % fotos.length;
+      var a = fotos[atual];
+      img.src = a.getAttribute("data-foto");
+      img.alt = "Foto: " + a.getAttribute("data-nome");
+      // textContent e não innerHTML: nome de espécie vem do banco, e aqui ele
+      // é texto, nunca HTML.
+      nome.textContent = a.getAttribute("data-nome");
+      sci.textContent = a.getAttribute("data-sci") || "";
+      sci.hidden = !a.getAttribute("data-sci");
+      meta.textContent = a.getAttribute("data-meta");
+      selo.hidden = a.getAttribute("data-primeira") !== "1";
+      contador.textContent = "Foto " + (atual + 1) + " de " + fotos.length;
+    }
+
+    fotos.forEach(function (a, i) {
+      a.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        mostrar(i);
+        if (!visor.open) visor.showModal();
+      });
     });
-    el.addEventListener("mouseleave", () => {
-      tooltip.style.opacity = "0";
+
+    document.getElementById("visor-ant").addEventListener("click", function () { mostrar(atual - 1); });
+    document.getElementById("visor-prox").addEventListener("click", function () { mostrar(atual + 1); });
+    document.getElementById("visor-fechar").addEventListener("click", function () { visor.close(); });
+
+    // Clique no escuro em volta fecha: o alvo do clique no ::backdrop é o
+    // próprio <dialog>.
+    visor.addEventListener("click", function (ev) { if (ev.target === visor) visor.close(); });
+
+    visor.addEventListener("keydown", function (ev) {
+      if (ev.key === "ArrowLeft") { ev.preventDefault(); mostrar(atual - 1); }
+      if (ev.key === "ArrowRight") { ev.preventDefault(); mostrar(atual + 1); }
     });
-  });
+
+    // Solta a foto grande da memória ao fechar — são várias por sessão.
+    visor.addEventListener("close", function () { img.removeAttribute("src"); });
+  })();
 </script>
 </body>
 </html>
