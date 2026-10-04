@@ -27,6 +27,7 @@ from .detector import AnimalDetector
 from .identify import Identifier
 from .identify import InaturalistTokenExpired
 from .identify import build_identifier
+from .imageio import write_image
 from .notify import Notifier
 from .notify import build_notifier
 from .storage import SightingsStore
@@ -150,7 +151,7 @@ def _identify_worker(
             print("[info] movimento detectado, mas não consegui identificar a espécie")
             continue
 
-        cv2.imwrite(str(image_path), frame)
+        write_image(image_path, frame)
 
         sighting_count = store.count_sightings_of(result.species_common_name) + 1
         store.add(result, image_path)

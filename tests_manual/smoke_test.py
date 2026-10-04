@@ -12,12 +12,12 @@ import pathlib
 import shutil
 import sys
 
-import cv2
 import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 from src.identify import build_identifier
+from src.imageio import write_image
 from src.notify import build_notifier
 from src.storage import SightingsStore
 
@@ -33,8 +33,12 @@ def make_frame() -> np.ndarray:
 
 
 def main() -> None:
+    # exist_ok=True porque o rmtree acima às vezes apaga o conteúdo mas não
+    # consegue remover a própria pasta (no Windows, com o projeto dentro do
+    # OneDrive, dá "acesso negado" nela) — e aí o ignore_errors engolia o erro e
+    # a segunda execução seguida do teste quebrava aqui.
     shutil.rmtree(TMP_DIR, ignore_errors=True)
-    TMP_DIR.mkdir(parents=True)
+    TMP_DIR.mkdir(parents=True, exist_ok=True)
 
     identifier = build_identifier("mock")
     notifier = build_notifier("console")
@@ -50,7 +54,7 @@ def main() -> None:
         assert result is not None
 
         image_path = TMP_DIR / f"frame_{i}.jpg"
-        cv2.imwrite(str(image_path), frame)
+        write_image(image_path, frame)
 
         sighting_count = store.count_sightings_of(result.species_common_name) + 1
         row_id = store.add(result, image_path)

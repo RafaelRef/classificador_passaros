@@ -318,7 +318,7 @@
   <div class="charts">
     <div class="card">
       <h2>Avistamentos por dia</h2>
-      {% if day_bars %}
+      {% if has_day_data %}
         <div class="daychart">
           {% for d in day_bars %}
             <div class="col">
@@ -374,7 +374,7 @@
                 {% if s.species_scientific_name %}<div class="species-sci">{{ s.species_scientific_name }}</div>{% endif %}
               </td>
               <td class="confidence">{{ (s.confidence * 100) | round | int }}%</td>
-              <td class="when">{{ s.seen_at[:16].replace("T", " ") }}</td>
+              <td class="when">{{ s.seen_at_local }}</td>
               <td><span class="source-badge">{{ s.source }}</span></td>
             </tr>
           {% endfor %}

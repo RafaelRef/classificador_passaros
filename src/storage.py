@@ -78,13 +78,23 @@ class SightingsStore:
         )
         return cur.fetchall()
 
+    # Nas consultas do dashboard abaixo, "seen_at" é sempre convertido com o
+    # modificador 'localtime' do SQLite antes de virar data. O banco guarda UTC
+    # (veja add()), mas quem olha o dashboard pensa em horário de Brasília: sem
+    # isso, tudo que acontece depois das 21h local era contado no dia seguinte
+    # do gráfico, e o filtro "Hoje" (que já vem em data local) pegava o
+    # intervalo errado. O parâmetro de data NÃO leva 'localtime' — ele já chega
+    # como data local pura ("2026-09-30"), e converter de novo jogaria o
+    # intervalo um dia pra trás.
+
     def sightings_in_range(self, start_iso: str, end_iso: str) -> list[dict]:
         """Avistamentos entre duas datas (inclusivo), mais recentes primeiro. Usado pelo dashboard."""
         self._conn.row_factory = sqlite3.Row
         cur = self._conn.execute(
             """
             SELECT * FROM sightings
-            WHERE date(seen_at) >= date(?) AND date(seen_at) <= date(?)
+            WHERE date(seen_at, 'localtime') >= date(?)
+              AND date(seen_at, 'localtime') <= date(?)
             ORDER BY seen_at DESC
             """,
             (start_iso, end_iso),
@@ -95,9 +105,10 @@ class SightingsStore:
         """Quantidade de avistamentos por dia no período. Usado pelo dashboard."""
         cur = self._conn.execute(
             """
-            SELECT date(seen_at) AS day, COUNT(*) AS n
+            SELECT date(seen_at, 'localtime') AS day, COUNT(*) AS n
             FROM sightings
-            WHERE date(seen_at) >= date(?) AND date(seen_at) <= date(?)
+            WHERE date(seen_at, 'localtime') >= date(?)
+              AND date(seen_at, 'localtime') <= date(?)
             GROUP BY day
             ORDER BY day ASC
             """,
@@ -111,7 +122,8 @@ class SightingsStore:
             """
             SELECT species_common_name, COUNT(*) AS n
             FROM sightings
-            WHERE date(seen_at) >= date(?) AND date(seen_at) <= date(?)
+            WHERE date(seen_at, 'localtime') >= date(?)
+              AND date(seen_at, 'localtime') <= date(?)
             GROUP BY species_common_name
             ORDER BY n DESC
             """,
@@ -121,7 +133,7 @@ class SightingsStore:
 
     def earliest_sighting_date(self) -> str | None:
         """Data (YYYY-MM-DD) do avistamento mais antigo, ou None se o banco estiver vazio. Usado pelo dashboard."""
-        cur = self._conn.execute("SELECT MIN(date(seen_at)) FROM sightings")
+        cur = self._conn.execute("SELECT MIN(date(seen_at, 'localtime')) FROM sightings")
         return cur.fetchone()[0]
 
     def close(self) -> None:

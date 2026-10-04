@@ -5,7 +5,7 @@ Rodar (na raiz do projeto, com o venv ativado):
 
     python -m src.dashboard
 
-Depois abrir http://localhost:5000 no navegador. Não precisa do pipeline
+Depois abrir http://localhost:5050 no navegador. Não precisa do pipeline
 (src/main.py) rodando ao mesmo tempo — lê o banco direto, então funciona mesmo
 com o app principal parado (só não vai ter avistamento novo aparecendo).
 """
@@ -13,7 +13,7 @@ com o app principal parado (só não vai ter avistamento novo aparecendo).
 from __future__ import annotations
 
 import pathlib
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from flask import Flask, abort, render_template, request, send_file
 
@@ -27,6 +27,19 @@ app = Flask(__name__, template_folder=str(PROJECT_ROOT / "src" / "templates"))
 
 # Intervalo padrão quando a pessoa ainda não escolheu um filtro de data.
 DEFAULT_RANGE_DAYS = 30
+
+
+def _to_local(seen_at: str) -> datetime:
+    """
+    Converte o "seen_at" guardado no banco (UTC, veja SightingsStore.add) pro
+    fuso da máquina que está servindo o dashboard — senão a família vê um
+    pássaro das 7h da manhã como "10:00". Linhas antigas sem offset no texto são
+    tratadas como UTC, que é o que elas sempre foram.
+    """
+    dt = datetime.fromisoformat(seen_at)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone()
 
 
 def _parse_date(value: str | None) -> date | None:
@@ -100,8 +113,14 @@ def index():
 
     for sighting in sightings:
         sighting["image_filename"] = pathlib.Path(sighting["image_path"]).name
+        sighting["seen_at_local"] = _to_local(sighting["seen_at"]).strftime("%d/%m/%Y %H:%M")
 
+    # _build_day_bars sempre devolve uma barra por dia do intervalo, mesmo que
+    # todas sejam zero — então o template precisa desse sinal pra mostrar a
+    # mesma mensagem de "nenhum avistamento" que os outros cards, em vez de um
+    # gráfico vazio.
     day_bars = _build_day_bars(by_day, start, end)
+    has_day_data = any(b["n"] for b in day_bars)
 
     max_species_count = max((n for _, n in by_species), default=0)
     species_bars = [
@@ -115,7 +134,7 @@ def index():
 
     most_recent = None
     if sightings:
-        most_recent = datetime.fromisoformat(sightings[0]["seen_at"]).strftime("%d/%m %H:%M")
+        most_recent = _to_local(sightings[0]["seen_at"]).strftime("%d/%m %H:%M")
 
     presets = [
         {"label": "Hoje", "start": today.isoformat(), "end": today.isoformat()},
@@ -128,6 +147,7 @@ def index():
         "dashboard.html",
         sightings=sightings,
         day_bars=day_bars,
+        has_day_data=has_day_data,
         species_bars=species_bars,
         total=len(sightings),
         species_count=len(by_species),
@@ -151,7 +171,12 @@ def image(filename: str):
 
 
 def main() -> None:
-    app.run(host="0.0.0.0", port=5050, debug=True)
+    # host="0.0.0.0" pra dar pra abrir do celular na mesma rede de casa. Por isso
+    # mesmo, use_debugger fica desligado: o console interativo do Werkzeug que
+    # vem junto com debug=True executa Python arbitrário, e aqui ele estaria
+    # exposto pra rede inteira. O reloader (prático pra mexer no dashboard) não
+    # tem esse problema e continua ligado.
+    app.run(host="0.0.0.0", port=5050, use_reloader=True, use_debugger=False)
 
 
 if __name__ == "__main__":

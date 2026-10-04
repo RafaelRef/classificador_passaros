@@ -23,6 +23,7 @@ import cv2
 import numpy as np
 
 from src.identify import Identification
+from src.imageio import write_image
 from src.storage import SightingsStore
 
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -51,7 +52,7 @@ def _fake_image(path: pathlib.Path, seed_color) -> None:
     img = np.full((240, 320, 3), seed_color, dtype=np.uint8)
     noise = np.random.randint(0, 30, img.shape, dtype=np.uint8)
     img = cv2.add(img, noise)
-    cv2.imwrite(str(path), img)
+    write_image(path, img)
 
 
 def main(n: int = 40) -> None:
