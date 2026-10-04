@@ -17,12 +17,16 @@ import functools
 import io
 import os
 import pathlib
+import threading
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlencode
 
+import cv2
+import numpy as np
 from dotenv import load_dotenv
 from flask import Flask, abort, jsonify, render_template, request, send_file
 
+from .detector import AnimalDetector
 from .esp32cam import ESP32Cam
 from .storage import SightingsStore
 
@@ -39,6 +43,69 @@ app = Flask(__name__, template_folder=str(PROJECT_ROOT / "src" / "templates"))
 # aparece, em vez de ficar piscando "sem resposta" pra sempre.
 load_dotenv(PROJECT_ROOT / ".env")
 camera = ESP32Cam(os.getenv("ESP32_CAM_URL"))
+
+# Detector carregado sob demanda (só no primeiro frame ao vivo pedido, não no
+# import do módulo) — carregar o YOLO custa alguns segundos e memória, e quem
+# só quer ver a lista de avistamentos nunca devia pagar esse preço. Se o
+# ambiente não tiver ultralytics/torch instalado (ex: clone novo configurado só
+# pra mexer no dashboard, ver README), a câmera ao vivo volta a mostrar o frame
+# cru, sem caixa — em vez de quebrar a página.
+_detector: AnimalDetector | None = None
+_detector_indisponivel = False
+_detector_lock = threading.Lock()
+
+# Mesma paleta e formato de rótulo do preview do src/main.py, pra quem já viu
+# uma reconhecer a outra.
+_BOX_COLORS_BGR = [
+    (0, 0, 255), (0, 255, 0), (255, 0, 0), (0, 255, 255), (255, 0, 255),
+]
+
+
+def _get_detector() -> AnimalDetector | None:
+    global _detector, _detector_indisponivel
+    if _detector_indisponivel:
+        return None
+    with _detector_lock:
+        if _detector is None and not _detector_indisponivel:
+            try:
+                ignore_humans = os.getenv("IGNORE_HUMANS", "true").strip().lower() not in ("false", "0", "no")
+                _detector = AnimalDetector(ignore_humans=ignore_humans)
+            except Exception:
+                _detector_indisponivel = True
+                return None
+    return _detector
+
+
+def _desenhar_deteccoes(jpeg_bytes: bytes) -> bytes:
+    """
+    Roda o mesmo detector do pipeline principal num frame da câmera ao vivo e
+    devolve o JPEG com caixa + rótulo "classe XX%" desenhados — igual ao preview
+    do `python -m src.main`. Se o detector não estiver disponível ou o frame vier
+    corrompido, devolve o JPEG original sem anotação, nunca quebra a janela ao vivo.
+    """
+    detector = _get_detector()
+    if detector is None:
+        return jpeg_bytes
+
+    arr = np.frombuffer(jpeg_bytes, dtype=np.uint8)
+    frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if frame is None:
+        return jpeg_bytes
+
+    try:
+        detections = detector.detect(frame)
+    except Exception:
+        return jpeg_bytes
+
+    for i, det in enumerate(detections):
+        x, y, w, h = det.box
+        color = _BOX_COLORS_BGR[i % len(_BOX_COLORS_BGR)]
+        cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
+        label = f"{det.class_name} {round(det.confidence * 100)}%"
+        cv2.putText(frame, label, (x, max(20, y - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+
+    ok, buffer = cv2.imencode(".jpg", frame)
+    return buffer.tobytes() if ok else jpeg_bytes
 
 # Intervalo padrão quando a pessoa ainda não escolheu um filtro de data.
 DEFAULT_RANGE_DAYS = 30
@@ -618,12 +685,15 @@ def camera_keepalive():
 @app.route("/camera/frame")
 def camera_frame():
     """
-    Um JPEG da câmera agora. 503 quando não deu: é o sinal pro JS da janela ao
-    vivo parar de insistir e mostrar que a câmera saiu do ar.
+    Um JPEG da câmera agora, com a mesma caixa + "classe XX%" que o preview do
+    `python -m src.main` desenha (ver _desenhar_deteccoes). 503 quando não deu: é
+    o sinal pro JS da janela ao vivo parar de insistir e mostrar que a câmera
+    saiu do ar.
     """
     imagem = camera.frame()
     if imagem is None:
         abort(503)
+    imagem = _desenhar_deteccoes(imagem)
     resposta = app.response_class(imagem, mimetype="image/jpeg")
     # Cada chamada é um frame novo de uma câmera ao vivo: cache aqui serviria
     # só pra mostrar foto velha.
