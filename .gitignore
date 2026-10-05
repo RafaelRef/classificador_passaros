@@ -12,6 +12,7 @@ data/captures/*
 data/sightings.db
 data/sightings.db.bak-*
 data/inaturalist_token.txt
+data/main.log
 
 tests_manual/_tmp/
 
